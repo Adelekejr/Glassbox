@@ -1,5 +1,7 @@
 # apps/web
 
-Placeholder for a later run.
+Minimal Next.js form for Glassbox. Plain styling. The visual design comes later; keep `components/Ladder.tsx` and `components/AuditForm.tsx` as the restyle points.
 
-Do build the hosted read-only report UI here — see `packages/core` for the engine and `README.md` for what a report is allowed to claim. Day 1 does not ship pages, a framework, or a deploy.
+Do run it locally — see `pnpm --filter web dev`. Do not deploy.
+
+The page posts to `/api/audit`, which calls `auditTarget` in `packages/core`. Paste an account (the hint reads `.testnet` / `.near`) or a JSON document.

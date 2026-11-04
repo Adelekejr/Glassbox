@@ -1,7 +1,7 @@
 {
   "name": "glassbox",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@10.33.4",
@@ -9,8 +9,8 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "pnpm --filter core test && pnpm --filter cli test && pnpm run typecheck",
-    "typecheck": "tsc -p packages/core --noEmit && tsc -p packages/cli --noEmit",
+    "test": "pnpm --filter core test && pnpm --filter cli test && pnpm --filter glassbox-mcp test && pnpm run typecheck",
+    "typecheck": "tsc -p packages/core --noEmit && tsc -p packages/cli --noEmit && tsc -p packages/mcp --noEmit && tsc -p apps/web --noEmit",
     "smoke": "pnpm --filter core smoke"
   },
   "devDependencies": {
@@ -19,6 +19,6 @@
     "typescript": "^5.7.2"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": ["esbuild", "near-sandbox", "near-workspaces", "secp256k1"]
   }
 }
