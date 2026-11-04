@@ -32,6 +32,20 @@ The tables cover dstack 0.5.7 and 0.5.8 only. Glassbox labels any conclusion
 drawn from them as a comparison against that published table.
 
 ---------------------------------------------------------------------------
+shade-contract-template wasm used by the local sandbox test
+Licence: Apache-2.0
+Copyright: NearDeFi and contributors
+Source: https://github.com/NearDeFi/shade-agent-framework
+Path: shade-contract-template
+Commit: 35758f3 (35758f354ad9862fb590daf9843fea4974d52549)
+File: packages/core/test/fixtures/shade-contract-template.wasm
+
+Built 2026-11-04 with Rust 1.86.0:
+`RUSTFLAGS="-C target-cpu=mvp -C link-arg=-s" cargo build --release --target wasm32-unknown-unknown --locked`
+The test deploys this wasm only on a local NEAR sandbox. It is not a mainnet
+or testnet deploy. shade-attestation, which the contract links, is MIT.
+
+---------------------------------------------------------------------------
 NearBlocks
 History reads that use the NearBlocks API must keep the attribution
 "Powered by Nearblocks.io APIs".

@@ -13,6 +13,8 @@ It does not judge whether a payment is correct. That is [Gideon](#gideon), a sep
 - Do print the same report as JSON — see `pnpm --filter cli start ac-sandbox.votron.testnet --json`.
 - Do audit a file offline — see `node packages/cli/bin/glassbox.js packages/core/test/fixtures/votron-registration.json` from the repo root, or pass any registration, app-compose, or deployment JSON. Add `--json` for the machine report.
 - Do smoke the other public targets — see `pnpm smoke`.
+- Do run the MCP server — see `packages/mcp/README.md`. The tool is `check_agent`.
+- Do open the local web form — see `pnpm --filter web dev`, then http://localhost:3000. It is not deployed.
 - Do read how a finding is decided — see `packages/core/src/report.ts`.
 - Do read how chain data is loaded — see `packages/core/src/audit.ts`.
 - Do read the wording rules before editing copy — see `HANDOFF.md`.
@@ -30,7 +32,7 @@ The first live read spends about half a minute. History comes from NearBlocks, a
 | NOT PROVEN | The evidence was missing, the index may be incomplete, or the question is outside what a registration can show. This is not a pass. |
 | RISKY | The registered configuration, or the account's keys, matched a concrete risk named in the sentence. |
 
-Glassbox does not collapse the ladder into one score. The summary counts are only a table of contents.
+The report also names the highest rung already on the ladder. That line is not a separate check. The counts stay the table of contents.
 
 ### Proven for `ac-sandbox.votron.testnet` (live, 2026-11-04)
 
@@ -85,6 +87,32 @@ PROVEN
 
 Powered by Nearblocks.io APIs.
 ```
+
+## MCP
+
+Do install it for an agent owner — see `packages/mcp/README.md` for Claude Desktop and Cursor snippets.
+
+`check_agent` takes a NEAR account or pasted JSON. It returns the same ladder as JSON, a one-sentence summary, and `overall` (the highest rung). Stdio transport. From this repo, before the package is published:
+
+```bash
+node packages/mcp/bin/glassbox-mcp.js
+```
+
+After publish, `npx -y glassbox-mcp`.
+
+A live `check_agent` on `ac-sandbox.votron.testnet` on 2026-11-04 returned `overall: RISKY`, shade v1, 6 risky / 3 not proven / 9 proven, and an approval-history list of `approve_codehash` calls dated from August 2025. No `remove_codehash` calls were in the index. The response includes `Powered by Nearblocks.io APIs.`
+
+## Web
+
+Do run the form locally — see `pnpm --filter web dev`. Paste an account (the hint names testnet or mainnet from the suffix) or JSON. The page POSTs to `/api/audit`, which calls the core library. Styling is plain on purpose. Do not deploy it in this repo state.
+
+## Shade v2
+
+Do run the local sandbox test — see `packages/core/test/shade-v2.sandbox.test.ts`. It starts a local NEAR sandbox, deploys `shade-contract-template` from NearDeFi/shade-agent-framework commit `35758f3` (Apache-2.0 wasm in `packages/core/test/fixtures/`), approves the local-mode measurements, registers an agent, and audits that RPC. No testnet transaction. The registered measurements match `get_approved_measurements`. They are the all-zero local-mode default, which the report marks as not a TDX measurement.
+
+## Approval history
+
+Do read the dated approve/remove section — see the "Approval history" block in `formatReport` (`packages/core/src/report.ts`). For one contract, Glassbox asks NearBlocks for the approve and remove methods that match the interface (`approve_codehash` / `remove_codehash`, or `approve_measurements` / `remove_measurements` / ppids). Results are cached in memory for 10 minutes. It is not a watcher.
 
 ## Layout
 
