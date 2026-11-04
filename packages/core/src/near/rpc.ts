@@ -8,6 +8,8 @@ export interface NearClientOptions {
   minIntervalMs?: number;
   endpoints?: string[];
   sleep?: (ms: number) => Promise<void>;
+  /** Public audits use final. A one-node sandbox often has not finalized the latest block yet. */
+  finality?: "final" | "optimistic";
 }
 
 export interface ViewResult {
@@ -43,6 +45,7 @@ export class NearClient {
   private readonly fetchImpl: typeof fetch;
   private readonly minIntervalMs: number;
   private readonly sleep: (ms: number) => Promise<void>;
+  private readonly finality: "final" | "optimistic";
   private tail: Promise<void> = Promise.resolve();
   private nextAt = 0;
 
@@ -54,6 +57,7 @@ export class NearClient {
     this.fetchImpl = options.fetch ?? fetch;
     this.minIntervalMs = options.minIntervalMs ?? (options.archival ? 1000 : 300);
     this.sleep = options.sleep ?? defaultSleep;
+    this.finality = options.finality ?? "final";
   }
 
   private pace(): Promise<void> {
@@ -123,7 +127,7 @@ export class NearClient {
   }> {
     const result = (await this.call("query", {
       request_type: "view_account",
-      finality: "final",
+      finality: this.finality,
       account_id: accountId,
     })) as { code_hash?: string; global_contract_hash?: string | null; storage_usage?: number };
     return result ?? {};
@@ -132,7 +136,7 @@ export class NearClient {
   async viewFunction(accountId: string, methodName: string, args: unknown = {}): Promise<ViewResult> {
     const result = (await this.call("query", {
       request_type: "call_function",
-      finality: "final",
+      finality: this.finality,
       account_id: accountId,
       method_name: methodName,
       args_base64: Buffer.from(JSON.stringify(args ?? {})).toString("base64"),
@@ -161,7 +165,7 @@ export class NearClient {
   async accessKeys(accountId: string): Promise<AccessKeyView[]> {
     const result = (await this.call("query", {
       request_type: "view_access_key_list",
-      finality: "final",
+      finality: this.finality,
       account_id: accountId,
     })) as { keys?: AccessKeyView[] } | null;
     return result?.keys ?? [];

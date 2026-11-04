@@ -14,6 +14,8 @@ export interface HistoryPage {
   source: "fastnear" | "nearblocks";
   /** True when the NearBlocks API was called. The report must attribute it. */
   usedNearblocks: boolean;
+  /** True when this page was served from the in-process cache. */
+  fromCache?: boolean;
 }
 
 export interface HistoryOptions {
@@ -30,6 +32,16 @@ const NEARBLOCKS: Record<Network, string> = {
 
 let nearblocksTail: Promise<void> = Promise.resolve();
 let nearblocksNextAt = 0;
+
+const historyCache = new Map<string, { at: number; page: HistoryPage }>();
+const DEFAULT_CACHE_MS = 10 * 60 * 1000;
+
+function cacheTtlMs(): number {
+  const raw = process.env.GLASSBOX_HISTORY_CACHE_MS;
+  if (!raw) return DEFAULT_CACHE_MS;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_CACHE_MS;
+}
 
 function defaultSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -52,6 +64,7 @@ async function takeNearblocksSlot(intervalMs: number, sleep: (ms: number) => Pro
 export function resetNearblocksLimiter(): void {
   nearblocksTail = Promise.resolve();
   nearblocksNextAt = 0;
+  historyCache.clear();
 }
 
 /**
@@ -65,11 +78,21 @@ export async function listMethodCalls(
   method: string,
   options: HistoryOptions = {},
 ): Promise<HistoryPage> {
+  const key = `${network}:${accountId}:${method}`;
+  const ttl = cacheTtlMs();
+  const hit = historyCache.get(key);
+  if (hit && ttl > 0 && Date.now() - hit.at < ttl) {
+    return { ...hit.page, fromCache: true };
+  }
   const fetchImpl = options.fetch ?? fetch;
   const fast = await tryFastnear(fetchImpl, network, accountId, method);
-  if (fast) return fast;
-  const calls = await fetchNearblocks(fetchImpl, network, accountId, method, options);
-  return { calls, source: "nearblocks", usedNearblocks: true };
+  const page = fast ?? {
+    calls: await fetchNearblocks(fetchImpl, network, accountId, method, options),
+    source: "nearblocks" as const,
+    usedNearblocks: true,
+  };
+  historyCache.set(key, { at: Date.now(), page });
+  return page;
 }
 
 async function tryFastnear(

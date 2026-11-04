@@ -173,6 +173,95 @@ test("an os image hash outside the fixed list is not called a compromise", async
   assert.equal(fixed.label, "dstack-0.6.1");
 });
 
+test("shade v2 compares approved measurements and keeps a dated approval history", () => {
+  const zero = "0".repeat(96);
+  const hash = "0".repeat(64);
+  const row = {
+    mrtd: zero,
+    rtmr0: zero,
+    rtmr1: zero,
+    rtmr2: zero,
+    key_provider_event_digest: zero,
+    app_compose_hash_payload: hash,
+  };
+  const matched = buildReport(
+    {
+      target: "shade.test.near",
+      network: "testnet",
+      shade: "shade-v2",
+      shadeDetail: "v2",
+      methodsPresent: ["get_contract_info", "get_approved_measurements", "get_agents"],
+      registration: null,
+      compose: null,
+      requiresTee: false,
+      v2Agents: [
+        {
+          accountId: "agent.test.near",
+          measurements: row,
+          validity: "Valid",
+          valid: true,
+          validUntilMs: Date.parse("2030-01-01T00:00:00.000Z"),
+        },
+      ],
+      approvedMeasurements: [row],
+      approvalHistory: [
+        {
+          method: "approve_measurements",
+          kind: "approve",
+          txHash: "abc",
+          signer: "owner.test.near",
+          timestampIso: "2026-11-04T00:00:00.000Z",
+          success: true,
+          detail: "mrtd 0000000000000000…",
+        },
+      ],
+      approvalHistoryNote: "No remove_measurements calls were in the indexed history.",
+      historySource: "nearblocks",
+      rpcEndpoints: [],
+      generatedAt: FROZEN.toISOString(),
+    },
+    { now: FROZEN },
+  );
+  const byId = Object.fromEntries(matched.findings.map((finding) => [finding.id, finding]));
+  assert.equal(byId["measurements.approved"].ladder, "PROVEN");
+  assert.equal(byId["measurements.local_default"].ladder, "RISKY");
+  assert.equal(byId["agent.validity"].ladder, "PROVEN");
+  assert.equal(matched.overall, "RISKY");
+  const text = formatReport(matched);
+  assert.match(text, /Approval history/);
+  assert.match(text, /approve_measurements/);
+  assert.match(text, /2026-11-04T00:00:00.000Z/);
+  assert.match(text, /Powered by Nearblocks.io APIs/);
+  assert.doesNotMatch(text, /hacked/i);
+  assert.doesNotMatch(text, /currently running/i);
+
+  const missed = buildReport(
+    {
+      target: "shade.test.near",
+      network: "testnet",
+      shade: "shade-v2",
+      shadeDetail: "v2",
+      methodsPresent: ["get_approved_measurements", "get_agents"],
+      registration: null,
+      compose: null,
+      v2Agents: [
+        {
+          accountId: "agent.test.near",
+          measurements: { ...row, mrtd: "1".repeat(96) },
+          validity: "Valid",
+          valid: true,
+          validUntilMs: Date.parse("2030-01-01T00:00:00.000Z"),
+        },
+      ],
+      approvedMeasurements: [row],
+      rpcEndpoints: [],
+      generatedAt: FROZEN.toISOString(),
+    },
+    { now: FROZEN },
+  );
+  assert.equal(missed.findings.find((finding) => finding.id === "measurements.approved")?.ladder, "RISKY");
+});
+
 test("image pins, secret names, and access keys", () => {
   assert.equal(classifyImage("repo/app@sha256:" + "ab".repeat(32)).pinned, true);
   assert.equal(classifyImage("repo/app:latest").tag, "latest");
