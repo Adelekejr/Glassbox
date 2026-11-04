@@ -1,0 +1,208 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import test from "node:test";
+import { fileURLToPath } from "node:url";
+import { assessAccessKeys } from "../src/checks/access-keys.js";
+import { assessDstack, versionInVulnerableRange } from "../src/checks/dstack.js";
+import { replayRtmr } from "../src/checks/rtmr.js";
+import { hardwareAndOSMeasurements } from "../src/data/shade-measurements.js";
+import { matchShadeMeasurements } from "../src/data/shade-measurements.js";
+import { classifyImage, isSecretEnvName, parseCompose, sha256Hex } from "../src/evidence/compose.js";
+import { auditValue } from "../src/audit.js";
+import { buildReport, formatReport } from "../src/report.js";
+import type { EventLogEntry } from "../src/types.js";
+
+const fixturePath = join(dirname(fileURLToPath(import.meta.url)), "fixtures/votron-registration.json");
+const fixture = JSON.parse(readFileSync(fixturePath, "utf8")) as {
+  originalAppComposeSha256: string;
+  quoteHex: string;
+  tcbInfo: { app_compose: string; rtmr0: string; rtmr1: string; rtmr2: string; rtmr3: string; event_log: EventLogEntry[] };
+  agentId: string;
+};
+
+const FROZEN = new Date("2026-11-04T12:00:00.000Z");
+const COMPOSE_HASH = "cdfac6870932559754412f5571b45818c26f93da9cf6247d919679d6960bbb78";
+
+test("votron fixture keeps the compose-hash and drops the preimage", () => {
+  assert.equal(fixture.originalAppComposeSha256, COMPOSE_HASH);
+  const payload = fixture.tcbInfo.event_log.find((event) => event.event === "compose-hash")?.event_payload;
+  assert.equal(payload, COMPOSE_HASH);
+  assert.notEqual(sha256Hex(fixture.tcbInfo.app_compose), COMPOSE_HASH);
+  assert.match(fixture.tcbInfo.app_compose, /NEAR_SEED_PHRASE/);
+  assert.match(fixture.tcbInfo.app_compose, /REDACTED/);
+  assert.doesNotMatch(fixture.tcbInfo.app_compose, /sk-[A-Za-z0-9]/);
+});
+
+test("votron registration report uses the real quote and stays inside the wording rules", async () => {
+  const report = await auditValue(fixture, { now: FROZEN, label: "votron-fixture" });
+  const text = `${formatReport(report)}\n${JSON.stringify(report)}`;
+  assert.doesNotMatch(text, /hacked/i);
+  assert.doesNotMatch(text, /currently running/i);
+  assert.match(text, /registered configuration/i);
+  assert.match(text, /matches a vulnerable configuration/);
+  assert.equal(report.shade, "shade-v1");
+  const byId = Object.fromEntries(report.findings.map((finding) => [finding.id, finding]));
+  assert.equal(byId["tdx.registration"].ladder, "PROVEN");
+  assert.match(byId["tdx.registration"].plainEnglish, /UpToDate/);
+  assert.equal(byId["tdx.fresh"].ladder, "NOT_PROVEN");
+  assert.equal(byId["tdx.debug"].ladder, "PROVEN");
+  assert.equal(byId["tdx.report_data"].ladder, "PROVEN");
+  assert.match(byId["tdx.report_data"].plainEnglish, new RegExp(fixture.agentId));
+  assert.equal(byId["measurements.quote_match"].ladder, "PROVEN");
+  assert.equal(byId["rtmr.replay"].ladder, "PROVEN");
+  assert.equal(byId["compose.hash"].ladder, "PROVEN");
+  assert.match(byId["compose.hash"].plainEnglish, /REDACTED|redacted|removed/i);
+  assert.equal(byId["codehash.approved"].ladder, "PROVEN");
+  assert.equal(byId["measurements.approved"].ladder, "NOT_PROVEN");
+  assert.equal(byId["dstack.range"].ladder, "RISKY");
+  assert.equal(byId["dstack.range"].inference, true);
+  assert.equal(byId["dstack.upgrade"].ladder, "RISKY");
+  assert.match(byId["dstack.upgrade"].plainEnglish, /20 Nov 2026/);
+  assert.match(byId["dstack.upgrade"].plainEnglish, /0\.3\.x/);
+  assert.equal(byId["images.pin"].ladder, "PROVEN");
+  assert.equal(byId["dstack.public_logs"].ladder, "RISKY");
+  assert.equal(byId["dstack.secret_env"].ladder, "RISKY");
+  assert.match(byId["dstack.secret_env"].plainEnglish, /NEAR_SEED_PHRASE/);
+  assert.match(byId["dstack.secret_env"].plainEnglish, /ANTHROPIC_API_KEY/);
+  assert.equal(byId["access.keys"].ladder, "RISKY");
+  assert.match(byId["access.keys"].plainEnglish, /Full-access/);
+  assert.equal(byId["mpc.allowlist"].ladder, "NOT_PROVEN");
+  assert.match(byId["runtime.observed"].plainEnglish, /registered configuration/);
+  assert.equal(report.attribution.length, 0);
+});
+
+test("fresh collateral errors are reported instead of being dropped", () => {
+  const report = buildReport(
+    {
+      target: "ac-sandbox.votron.testnet",
+      network: "testnet",
+      shade: "shade-v1",
+      shadeDetail: "fixture",
+      methodsPresent: ["get_agent"],
+      registration: {
+        quoteHex: fixture.quoteHex,
+        agentId: fixture.agentId,
+        timestampSec: 1758945254,
+      },
+      compose: null,
+      freshCollateralError: "pccs down",
+      rpcEndpoints: [],
+      generatedAt: FROZEN.toISOString(),
+      historySource: "file",
+    },
+    { now: FROZEN },
+  );
+  const fresh = report.findings.find((finding) => finding.id === "tdx.fresh");
+  assert.match(fresh?.plainEnglish ?? "", /pccs down/);
+});
+
+test("event log replay matches the registered RTMR3", () => {
+  assert.equal(replayRtmr(fixture.tcbInfo.event_log, 3), fixture.tcbInfo.rtmr3);
+  assert.equal(replayRtmr(fixture.tcbInfo.event_log, 0), fixture.tcbInfo.rtmr0);
+});
+
+test("votron measurements are not in the Shade 0.5.7 or 0.5.8 tables", () => {
+  assert.equal(
+    matchShadeMeasurements({
+      rtmr0: fixture.tcbInfo.rtmr0,
+      rtmr1: fixture.tcbInfo.rtmr1,
+      rtmr2: fixture.tcbInfo.rtmr2,
+    }),
+    null,
+  );
+  const row = hardwareAndOSMeasurements["0.5.8"]["tdx.small"].rtmrs;
+  const match = matchShadeMeasurements(row);
+  assert.equal(match?.version, "0.5.8");
+  assert.equal(match?.instanceType, "tdx.small");
+  for (const version of ["0.5.7", "0.5.8"] as const) {
+    for (const instance of Object.values(hardwareAndOSMeasurements[version])) {
+      for (const value of Object.values(instance.rtmrs)) {
+        assert.equal(value.length, 96);
+      }
+    }
+  }
+});
+
+test("dstack version boundaries and an unpinned declared 0.5.8 deployment", async () => {
+  assert.equal(versionInVulnerableRange("0.3.1"), true);
+  assert.equal(versionInVulnerableRange("0.5.8"), true);
+  assert.equal(versionInVulnerableRange("0.6.0"), true);
+  assert.equal(versionInVulnerableRange("0.5.12"), false);
+  assert.equal(versionInVulnerableRange("0.6.1"), false);
+  assert.equal(versionInVulnerableRange("0.3.0"), false);
+  const deployment = {
+    tee_config: { dstack_version: "0.5.8", public_logs: true },
+    env: ["SPONSOR_PRIVATE_KEY"],
+    docker_compose_file: "services:\n  app:\n    image: example/app:latest\n    environment:\n      SPONSOR_PRIVATE_KEY: not-a-real-secret\n",
+  };
+  const report = await auditValue(deployment, { now: FROZEN });
+  const text = formatReport(report);
+  assert.doesNotMatch(text, /hacked/i);
+  assert.doesNotMatch(text, /not-a-real-secret/);
+  const byId = Object.fromEntries(report.findings.map((finding) => [finding.id, finding]));
+  assert.equal(byId["dstack.range"].ladder, "RISKY");
+  assert.match(byId["dstack.range"].plainEnglish, /0\.5\.8/);
+  assert.equal(byId["dstack.range"].inference, false);
+  assert.equal(byId["images.pin"].ladder, "RISKY");
+  assert.match(byId["images.pin"].plainEnglish, /latest/);
+  assert.equal(byId["dstack.secret_env"].ladder, "RISKY");
+  assert.match(byId["dstack.secret_env"].plainEnglish, /SPONSOR_PRIVATE_KEY/);
+});
+
+test("an os image hash outside the fixed list is not called a compromise", async () => {
+  const report = await auditValue(
+    {
+      tcb_info: {
+        os_image_hash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        event_log: [],
+      },
+    },
+    { now: FROZEN },
+  );
+  const finding = report.findings.find((item) => item.id === "dstack.range");
+  assert.equal(finding?.ladder, "RISKY");
+  assert.match(finding?.title ?? "", /not a known fixed image/);
+  assert.equal(finding?.inference, true);
+  const fixed = assessDstack({
+    osImageHash: "ec43cb8c5e04b6bb6c53b33b16076a01d83d01f7f4b703f2f78a0d947d6247e6",
+    hasOsImageHashEvent: true,
+    hasRootfsHashEvent: false,
+  });
+  assert.equal(fixed.kind, "fixed");
+  assert.equal(fixed.label, "dstack-0.6.1");
+});
+
+test("image pins, secret names, and access keys", () => {
+  assert.equal(classifyImage("repo/app@sha256:" + "ab".repeat(32)).pinned, true);
+  assert.equal(classifyImage("repo/app:latest").tag, "latest");
+  assert.equal(classifyImage("repo/app").implicitLatest, true);
+  assert.equal(isSecretEnvName("NEAR_SEED_PHRASE"), true);
+  assert.equal(isSecretEnvName("ANTHROPIC_API_KEY"), true);
+  assert.equal(isSecretEnvName("SPONSOR_PRIVATE_KEY"), true);
+  assert.equal(isSecretEnvName("API_CODEHASH"), false);
+  assert.equal(isSecretEnvName("PUBLIC_LOGGER"), false);
+  const unlimited = assessAccessKeys([
+    {
+      public_key: "ed25519:example",
+      access_key: {
+        permission: { FunctionCall: { allowance: null, receiver_id: "app.near", method_names: [] } },
+      },
+    },
+  ]);
+  assert.equal(unlimited.ladder, "RISKY");
+  assert.match(unlimited.reasons.join(" "), /any method/);
+  assert.match(unlimited.reasons.join(" "), /unlimited/);
+  const limited = assessAccessKeys([
+    {
+      public_key: "ed25519:example",
+      access_key: {
+        permission: { FunctionCall: { allowance: "1000", receiver_id: "app.near", method_names: ["get_agent"] } },
+      },
+    },
+  ]);
+  assert.equal(limited.ladder, "PROVEN");
+  const parsed = parseCompose("services:\n  app:\n    image: nginx:1.25\n");
+  assert.equal(parsed?.images[0]?.pinned, false);
+  assert.equal(parsed?.images[0]?.tag, "1.25");
+});
