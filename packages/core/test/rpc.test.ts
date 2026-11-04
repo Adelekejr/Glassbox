@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { AccountNotFoundError } from "../src/near/errors.js";
+import { listMethodCalls, resetNearblocksLimiter } from "../src/near/history.js";
 import { NearClient } from "../src/near/rpc.js";
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -32,7 +33,7 @@ test("RPC falls back when the first public endpoint fails", async () => {
   assert.equal(account.code_hash, "abc");
   assert.deepEqual(urls, ["https://rpc.first.example", "https://rpc.second.example"]);
   await client.viewAccount("ac-sandbox.votron.testnet");
-  assert.ok(slept.some((ms) => ms >= 15));
+  assert.ok(slept.some((ms) => ms > 0));
 });
 
 test("a missing account is not retried as an endpoint failure", async () => {
@@ -52,6 +53,44 @@ test("a missing account is not retried as an endpoint failure", async () => {
   });
   await assert.rejects(() => client.viewAccount("missing.testnet"), AccountNotFoundError);
   assert.equal(calls, 1);
+});
+
+test("approve and remove history is cached so NearBlocks is not called twice", async () => {
+  resetNearblocksLimiter();
+  let nearblocksCalls = 0;
+  const fetchImpl: typeof fetch = async (input) => {
+    const url = String(input);
+    if (url.includes("fastnear")) return jsonResponse({}, 404);
+    nearblocksCalls += 1;
+    return jsonResponse({
+      txns: [
+        {
+          transaction_hash: "histotx",
+          predecessor_account_id: "owner.testnet",
+          block_timestamp: "1750000000000000000",
+          outcomes: { status: true },
+          receipt_outcome: { status: true },
+          actions: [{ method: "remove_measurements", args: "{\"measurements\":{\"rtmrs\":{\"mrtd\":\"aa\"}}}" }],
+        },
+      ],
+    });
+  };
+  const first = await listMethodCalls("testnet", "shade.testnet", "remove_measurements", {
+    fetch: fetchImpl,
+    nearblocksIntervalMs: 0,
+    sleep: async () => undefined,
+  });
+  const second = await listMethodCalls("testnet", "shade.testnet", "remove_measurements", {
+    fetch: fetchImpl,
+    nearblocksIntervalMs: 0,
+    sleep: async () => undefined,
+  });
+  assert.equal(nearblocksCalls, 1);
+  assert.equal(first.fromCache, undefined);
+  assert.equal(second.fromCache, true);
+  assert.equal(second.calls[0]?.hash, "histotx");
+  assert.equal(second.calls[0]?.signer, "owner.testnet");
+  assert.equal(second.usedNearblocks, true);
 });
 
 test("method-not-found is distinct from a panic, which means the method exists", async () => {

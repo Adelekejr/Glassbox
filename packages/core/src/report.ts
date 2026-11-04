@@ -1,4 +1,5 @@
 import { isSecretEnvName } from "./evidence/compose.js";
+import { isZeroMeasurement, measurementsMatch } from "./evidence/measurements.js";
 import { eventPayload, hasEvent } from "./evidence/registration.js";
 import { assessAccessKeys } from "./checks/access-keys.js";
 import { assessDstack } from "./checks/dstack.js";
@@ -14,6 +15,7 @@ import {
   accountUrl,
   advisoryUrl,
   txUrl,
+  type ApprovedMeasurementRow,
   type EvidenceBundle,
   type EvidenceLink,
   type Finding,
@@ -24,19 +26,36 @@ import {
 
 const LADDER_ORDER: Ladder[] = ["RISKY", "NOT_PROVEN", "PROVEN"];
 
+export interface AgentCheck {
+  overall: Ladder;
+  summary: string;
+  report: Report;
+}
+
+export function presentCheck(report: Report): AgentCheck {
+  return { overall: report.overall, summary: report.overallPlainEnglish, report };
+}
+
 export function buildReport(bundle: EvidenceBundle, options?: { now?: Date }): Report {
   const now = options?.now ?? new Date(bundle.generatedAt);
   const findings = [
     runtimeFinding(),
     shadeFinding(bundle),
     ...attestationFindings(bundle, now),
-    ...approvalFindings(bundle),
+    ...approvalFindings(bundle, now),
     ...composeFindings(bundle, now),
     accessFinding(bundle),
     mpcFinding(bundle, now),
   ].filter((finding): finding is Finding => finding !== null);
 
   findings.sort((a, b) => LADDER_ORDER.indexOf(a.ladder) - LADDER_ORDER.indexOf(b.ladder) || a.id.localeCompare(b.id));
+
+  const summary = {
+    proven: findings.filter((finding) => finding.ladder === "PROVEN").length,
+    notProven: findings.filter((finding) => finding.ladder === "NOT_PROVEN").length,
+    risky: findings.filter((finding) => finding.ladder === "RISKY").length,
+  };
+  const overall: Ladder = summary.risky > 0 ? "RISKY" : summary.notProven > 0 ? "NOT_PROVEN" : "PROVEN";
 
   return {
     tool: "glassbox",
@@ -45,12 +64,12 @@ export function buildReport(bundle: EvidenceBundle, options?: { now?: Date }): R
     network: bundle.network,
     shade: bundle.shade,
     generatedAt: bundle.generatedAt,
-    summary: {
-      proven: findings.filter((finding) => finding.ladder === "PROVEN").length,
-      notProven: findings.filter((finding) => finding.ladder === "NOT_PROVEN").length,
-      risky: findings.filter((finding) => finding.ladder === "RISKY").length,
-    },
+    summary,
+    overall,
+    overallPlainEnglish: `Highest rung on this ladder is ${overall.replace("_", " ")} (${summary.risky} risky, ${summary.notProven} not proven, ${summary.proven} proven). That is the strongest concern already listed. It is not a separate check.`,
     findings,
+    approvalHistory: bundle.approvalHistory ?? [],
+    approvalHistoryNote: bundle.approvalHistoryNote,
     limitations: [
       "Findings that cite a quote or an app compose describe the registered configuration. They do not establish what the account is executing now.",
       "Glassbox does not judge payment correctness. That is Gideon, a separate NEAR pre-send checker by the same builder.",
@@ -72,6 +91,7 @@ export function formatReport(report: Report): string {
   lines.push(
     `Summary: ${report.summary.risky} risky, ${report.summary.notProven} not proven, ${report.summary.proven} proven.`,
   );
+  lines.push(report.overallPlainEnglish);
   lines.push(
     "This report describes the registered configuration. It does not establish what the account is executing now.",
   );
@@ -95,6 +115,18 @@ export function formatReport(report: Report): string {
       lines.push("");
     });
   }
+  lines.push("Approval history");
+  lines.push("On-demand approve and remove calls for this one contract. Not a continuous watcher.");
+  if (report.approvalHistoryNote) lines.push(report.approvalHistoryNote);
+  if (report.approvalHistory.length === 0) {
+    lines.push("- No approve or remove calls were loaded.");
+  }
+  for (const event of report.approvalHistory) {
+    const when = event.timestampIso ?? "time unknown";
+    const status = event.success ? "success" : "failed";
+    lines.push(`- ${when} ${event.method} by ${event.signer} (${status}) — ${event.detail} — ${event.txHash}`);
+  }
+  lines.push("");
   if (report.limitations.length > 0) {
     lines.push("Limits");
     for (const line of report.limitations) lines.push(`- ${line}`);
@@ -408,8 +440,12 @@ function composeHashFinding(bundle: EvidenceBundle): Finding {
   );
 }
 
-function approvalFindings(bundle: EvidenceBundle): Finding[] {
+function approvalFindings(bundle: EvidenceBundle, now: Date): Finding[] {
   const findings: Finding[] = [];
+  const localDefault = localDefaultFinding(bundle);
+  if (localDefault) findings.push(localDefault);
+  const validity = validityFinding(bundle, now);
+  if (validity) findings.push(validity);
   if (bundle.shade === "shade-v1" || bundle.shade === "shade-v1-worker") {
     findings.push(codehashFinding(bundle));
     findings.push(
@@ -436,6 +472,68 @@ function approvalFindings(bundle: EvidenceBundle): Finding[] {
     );
   }
   return findings;
+}
+
+function registeredMeasurementRows(bundle: EvidenceBundle): ApprovedMeasurementRow[] {
+  if (bundle.v2Agents && bundle.v2Agents.length > 0) return bundle.v2Agents.map((agent) => agent.measurements);
+  const tcb = bundle.registration?.tcbInfo;
+  if (tcb?.mrtd && tcb.rtmr0 && tcb.rtmr1 && tcb.rtmr2) {
+    return [
+      {
+        mrtd: tcb.mrtd,
+        rtmr0: tcb.rtmr0,
+        rtmr1: tcb.rtmr1,
+        rtmr2: tcb.rtmr2,
+        rtmr3: tcb.rtmr3,
+        app_compose_hash_payload: bundle.registration?.appComposeSha256,
+      },
+    ];
+  }
+  return [];
+}
+
+function localDefaultFinding(bundle: EvidenceBundle): Finding | null {
+  const zeros = (bundle.v2Agents ?? []).filter((agent) => isZeroMeasurement(agent.measurements));
+  if (zeros.length === 0) return null;
+  return make(
+    "measurements.local_default",
+    "RISKY",
+    "Registered measurements are the all-zero local-mode default",
+    false,
+    `${zeros.length} registered agent${zeros.length === 1 ? "" : "s"} store all-zero MRTD and RTMR0 through RTMR2. That is the Shade local-mode default. It is not a TDX measurement.`,
+    zeros.map((agent) => ({ label: agent.accountId })),
+  );
+}
+
+function validityFinding(bundle: EvidenceBundle, now: Date): Finding | null {
+  const agents = bundle.v2Agents;
+  if (!agents || agents.length === 0) return null;
+  const expired = agents.filter((agent) => agent.validUntilMs !== undefined && agent.validUntilMs < now.getTime());
+  const invalid = agents.filter((agent) => !agent.valid);
+  if (expired.length === 0 && invalid.length === 0) {
+    return make(
+      "agent.validity",
+      "PROVEN",
+      "The contract reports the registered agent as valid",
+      false,
+      agents
+        .map((agent) => {
+          const until = agent.validUntilMs ? new Date(agent.validUntilMs).toISOString() : "an unknown time";
+          return `${agent.accountId} is ${agent.validity} until ${until}.`;
+        })
+        .join(" "),
+    );
+  }
+  return make(
+    "agent.validity",
+    "RISKY",
+    "A registered agent is not valid on the contract",
+    false,
+    [
+      ...invalid.map((agent) => `${agent.accountId} is ${agent.validity}.`),
+      ...expired.map((agent) => `${agent.accountId} validity ended at ${new Date(agent.validUntilMs ?? 0).toISOString()}.`),
+    ].join(" "),
+  );
 }
 
 function codehashFinding(bundle: EvidenceBundle): Finding {
@@ -482,24 +580,19 @@ function codehashFinding(bundle: EvidenceBundle): Finding {
 
 function measurementListFinding(bundle: EvidenceBundle): Finding {
   const rows = bundle.approvedMeasurements ?? [];
-  const registered = bundle.registration?.tcbInfo;
-  if (registered?.mrtd && registered.rtmr0 && registered.rtmr1 && registered.rtmr2) {
-    const hit = rows.some((row) =>
-      sameHex(row.mrtd, registered.mrtd) &&
-      sameHex(row.rtmr0, registered.rtmr0) &&
-      sameHex(row.rtmr1, registered.rtmr1) &&
-      sameHex(row.rtmr2, registered.rtmr2) &&
-      (!row.app_compose_hash_payload ||
-        !bundle.registration?.appComposeSha256 ||
-        sameHex(row.app_compose_hash_payload, bundle.registration.appComposeSha256)),
-    );
-    if (hit) {
+  const registered = registeredMeasurementRows(bundle);
+  if (registered.length > 0) {
+    const misses = registered.filter((candidate) => !rows.some((row) => measurementsMatch(row, candidate)));
+    if (misses.length === 0) {
       return make(
         "measurements.approved",
         "PROVEN",
         "Registered measurements are on the approved list",
         false,
-        "The registered MRTD and RTMR0 through RTMR2 match a row from the contract's approved-measurements view.",
+        bundle.v2Agents?.length
+          ? `Each registered agent's MRTD, RTMR0 through RTMR2, key-provider digest, and app-compose hash match a row from get_approved_measurements (${registered.length} agent${registered.length === 1 ? "" : "s"}).`
+          : "The registered MRTD and RTMR0 through RTMR2 match a row from the contract's approved-measurements view.",
+        bundle.v2Agents?.map((agent) => ({ label: agent.accountId, detail: agent.validity })) ?? [],
       );
     }
     return make(
@@ -507,7 +600,7 @@ function measurementListFinding(bundle: EvidenceBundle): Finding {
       "RISKY",
       "Registered measurements are not on the approved list",
       false,
-      "The contract published an approved-measurements list, and the registered MRTD and RTMR0 through RTMR2 are not on it.",
+      `The contract published ${rows.length} approved measurement row${rows.length === 1 ? "" : "s"}, and ${misses.length} registered measurement set${misses.length === 1 ? " is" : "s are"} not on it.`,
       [{ label: "Approved rows", detail: String(rows.length) }],
     );
   }

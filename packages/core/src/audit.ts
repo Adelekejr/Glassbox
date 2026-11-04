@@ -1,7 +1,13 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { MPC_TARGETS } from "./checks/mpc.js";
 import { fetchFreshCollateral } from "./checks/tdx.js";
 import { parseCompose, sha256Hex } from "./evidence/compose.js";
+import {
+  approvalEventsFromCalls,
+  approvalMethodsFor,
+  normalizeMeasurementRow,
+  normalizeV2Agent,
+} from "./evidence/measurements.js";
 import { normalizeRegistrationArgs, normalizeTcb } from "./evidence/registration.js";
 import { AccountNotFoundError } from "./near/errors.js";
 import { extractFunctionCallArgs, listMethodCalls, type HistoryCall } from "./near/history.js";
@@ -12,6 +18,7 @@ import {
   nsToSeconds,
   type AccessKeyView,
   type AgentView,
+  type ApprovalEvent,
   type ApprovedCodehash,
   type ApprovedMeasurementRow,
   type EvidenceBundle,
@@ -20,14 +27,23 @@ import {
   type RegistrationEvidence,
   type Report,
   type ShadeKind,
+  type ShadeV2Agent,
 } from "./types.js";
 
 export interface AuditOptions {
   network?: Network;
   now?: Date;
   fetch?: typeof fetch;
+  /** Use these JSON-RPC URLs instead of the public FastNEAR / near.org list. */
+  rpcEndpoints?: string[];
   /** Skip the fresh PCCS fetch. Chain reads still happen. */
   skipFreshCollateral?: boolean;
+  /** Skip NearBlocks approve/remove and registration history. */
+  skipHistory?: boolean;
+  /** Skip the public MPC allowlist reads. */
+  skipMpc?: boolean;
+  /** Defaults to final. Tests against a local sandbox may use optimistic. */
+  finality?: "final" | "optimistic";
   nearblocksIntervalMs?: number;
   rpcIntervalMs?: number;
 }
@@ -72,6 +88,15 @@ export async function auditFile(path: string, options: AuditOptions = {}): Promi
   return auditValue(parsed, { ...options, label: path });
 }
 
+export async function auditTarget(target: string, options: AuditOptions = {}): Promise<Report> {
+  const trimmed = target.trim();
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    return auditValue(JSON.parse(trimmed) as unknown, { ...options, label: "pasted-json" });
+  }
+  if (existsSync(trimmed)) return auditFile(trimmed, options);
+  return auditAccount(trimmed, options);
+}
+
 export async function auditValue(value: unknown, options: AuditOptions & { label?: string } = {}): Promise<Report> {
   const bundle = bundleFromJson(value, options.label ?? "pasted-json");
   return buildReport(bundle, { now: options.now });
@@ -82,12 +107,16 @@ async function collectAccount(accountId: string, network: Network, options: Audi
     network,
     fetch: options.fetch,
     minIntervalMs: options.rpcIntervalMs,
+    endpoints: options.rpcEndpoints,
+    finality: options.finality,
   });
   const archival = new NearClient({
     network,
-    archival: true,
+    archival: !options.rpcEndpoints,
     fetch: options.fetch,
-    minIntervalMs: options.rpcIntervalMs ?? 1000,
+    minIntervalMs: options.rpcIntervalMs ?? (options.rpcEndpoints ? 50 : 1000),
+    endpoints: options.rpcEndpoints,
+    finality: options.finality,
   });
   const account = await client.viewAccount(accountId);
   const probes = await Promise.all(
@@ -96,6 +125,7 @@ async function collectAccount(accountId: string, network: Network, options: Audi
       return [method, view] as const;
     }),
   );
+  const probeMap = new Map(probes);
   const present = probes.filter(([, view]) => methodExists(view)).map(([method]) => method);
   const shade = classifyShade(new Set(present));
   const generatedAt = (options.now ?? new Date()).toISOString();
@@ -106,11 +136,14 @@ async function collectAccount(accountId: string, network: Network, options: Audi
   let historySource: EvidenceBundle["historySource"] = "none";
   let agentView: AgentView | null = null;
   let approvedCodehashes: ApprovedCodehash[] = [];
+  let approveCodehashCalls: HistoryCall[] = [];
   let approvedMeasurements: ApprovedMeasurementRow[] | undefined;
+  let v2Agents: ShadeV2Agent[] | undefined;
+  let requiresTee: boolean | null = null;
   const usedNearblocks = { value: false };
 
   let historyError: string | undefined;
-  if (shade === "shade-v1" || shade === "shade-v1-worker" || shade === "shade-v2" || shade === "unknown") {
+  if (!options.skipHistory && (shade === "shade-v1" || shade === "shade-v1-worker" || shade === "shade-v2" || shade === "unknown")) {
     const method = shade === "shade-v1-worker" ? "register_worker" : "register_agent";
     const history = await safeHistory(network, accountId, method, options);
     historySource = history.source;
@@ -124,13 +157,38 @@ async function collectAccount(accountId: string, network: Network, options: Audi
     }
   }
 
-  if (shade === "shade-v1" || shade === "shade-v1-worker") {
+  if (!options.skipHistory && (shade === "shade-v1" || shade === "shade-v1-worker")) {
     const history = await safeHistory(network, accountId, "approve_codehash", options);
     if (history.usedNearblocks) usedNearblocks.value = true;
     if (historySource === "none") historySource = history.source;
     historyError = history.error ?? historyError;
+    approveCodehashCalls = history.calls;
     approvedCodehashes = codehashesFrom(history.calls);
   }
+
+  const infoView = probeMap.get("get_contract_info");
+  if (infoView?.ok && infoView.value && typeof infoView.value === "object") {
+    requiresTee = Boolean((infoView.value as { requires_tee?: boolean }).requires_tee);
+  }
+  const measurementView = probeMap.get("get_approved_measurements");
+  if (measurementView?.ok && Array.isArray(measurementView.value)) {
+    approvedMeasurements = measurementView.value
+      .map((row) => normalizeMeasurementRow(row))
+      .filter((row): row is ApprovedMeasurementRow => row !== null);
+  }
+  const agentsView = probeMap.get("get_agents");
+  if (agentsView?.ok && Array.isArray(agentsView.value)) {
+    v2Agents = agentsView.value
+      .map((row) => normalizeV2Agent(row))
+      .filter((row): row is ShadeV2Agent => row !== null);
+  }
+
+  const approvalHistory = options.skipHistory
+    ? { events: [] as ApprovalEvent[], note: "Approval history was not requested." }
+    : await collectApprovalHistory(shade, network, accountId, options, approveCodehashCalls, usedNearblocks, (message) => {
+        historyError = message ?? historyError;
+      });
+  if (!options.skipHistory && usedNearblocks.value) historySource = "nearblocks";
 
   const agentId = registration?.agentId;
   if (present.includes("get_agent") && agentId) {
@@ -138,13 +196,6 @@ async function collectAccount(accountId: string, network: Network, options: Audi
     if (view.ok && view.value && typeof view.value === "object") {
       const record = view.value as AgentView;
       agentView = { checksum: record.checksum, codehash: record.codehash };
-    }
-  }
-
-  if (present.includes("get_approved_measurements")) {
-    const view = await client.viewFunction(accountId, "get_approved_measurements", {});
-    if (view.ok && Array.isArray(view.value)) {
-      approvedMeasurements = view.value as ApprovedMeasurementRow[];
     }
   }
 
@@ -156,7 +207,7 @@ async function collectAccount(accountId: string, network: Network, options: Audi
     accessKeyError = error instanceof Error ? error.message : String(error);
   }
 
-  const mpc = await readMpcAllowlists(options);
+  const mpc = options.skipMpc ? [] : await readMpcAllowlists(options);
   const compose = registration?.tcbInfo?.app_compose ? parseCompose(registration.tcbInfo.app_compose) : null;
 
   let freshCollateral: unknown;
@@ -170,12 +221,18 @@ async function collectAccount(accountId: string, network: Network, options: Audi
   }
 
   if (usedNearblocks.value) historySource = "nearblocks";
+  let shadeDetail = describeShade(shade, present, account.global_contract_hash);
+  if (requiresTee === false) {
+    shadeDetail += " get_contract_info says requires_tee is false, so this registration path is Shade local mode, not a TEE.";
+  } else if (requiresTee === true) {
+    shadeDetail += " get_contract_info says requires_tee is true.";
+  }
 
   return {
     target: accountId,
     network,
     shade,
-    shadeDetail: describeShade(shade, present, account.global_contract_hash),
+    shadeDetail,
     codeHash: account.code_hash,
     globalContractHash: account.global_contract_hash ?? null,
     methodsPresent: present,
@@ -184,8 +241,12 @@ async function collectAccount(accountId: string, network: Network, options: Audi
     failedRegistrationCount,
     compose,
     agentView,
+    v2Agents,
+    requiresTee,
     approvedCodehashes,
     approvedMeasurements,
+    approvalHistory: approvalHistory.events,
+    approvalHistoryNote: approvalHistory.note,
     accessKeys,
     accessKeyError,
     mpc,
@@ -240,12 +301,42 @@ async function loadRegistration(
   };
 }
 
+async function collectApprovalHistory(
+  shade: ShadeKind,
+  network: Network,
+  accountId: string,
+  options: AuditOptions,
+  approveCodehashCalls: HistoryCall[],
+  usedNearblocks: { value: boolean },
+  onError: (message: string | undefined) => void,
+): Promise<{ events: ApprovalEvent[]; note?: string }> {
+  const events: ApprovalEvent[] = [];
+  const notes: string[] = [];
+  for (const method of approvalMethodsFor(shade)) {
+    const page =
+      method === "approve_codehash"
+        ? { calls: approveCodehashCalls, usedNearblocks: false, error: undefined as string | undefined, fromCache: false }
+        : await safeHistory(network, accountId, method, options);
+    if (page.usedNearblocks) usedNearblocks.value = true;
+    if (page.error) onError(page.error);
+    if (page.fromCache) notes.push("Some rows were served from the local cache of an earlier NearBlocks read.");
+    const rows = approvalEventsFromCalls(method, page.calls);
+    events.push(...rows);
+    if (rows.length === 0) notes.push(`No ${method} calls were in the indexed history.`);
+  }
+  events.sort((a, b) => (b.timestampNs ?? "").localeCompare(a.timestampNs ?? ""));
+  return {
+    events,
+    note: notes.length ? [...new Set(notes)].join(" ") : undefined,
+  };
+}
+
 async function safeHistory(
   network: Network,
   accountId: string,
   method: string,
   options: AuditOptions,
-): Promise<{ calls: HistoryCall[]; source: "fastnear" | "nearblocks"; usedNearblocks: boolean; error?: string }> {
+): Promise<{ calls: HistoryCall[]; source: "fastnear" | "nearblocks"; usedNearblocks: boolean; error?: string; fromCache?: boolean }> {
   try {
     return await listMethodCalls(network, accountId, method, {
       fetch: options.fetch,

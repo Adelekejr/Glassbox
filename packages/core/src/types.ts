@@ -25,6 +25,17 @@ export interface Finding {
   evidence: EvidenceLink[];
 }
 
+export interface ApprovalEvent {
+  method: string;
+  kind: "approve" | "remove";
+  txHash: string;
+  signer: string;
+  timestampNs?: string;
+  timestampIso?: string;
+  success: boolean;
+  detail: string;
+}
+
 export interface Report {
   tool: "glassbox";
   version: string;
@@ -33,7 +44,13 @@ export interface Report {
   shade: ShadeKind;
   generatedAt: string;
   summary: { proven: number; notProven: number; risky: number };
+  /** Highest rung present. Counts stay on `summary`; this is not a separate check. */
+  overall: Ladder;
+  overallPlainEnglish: string;
   findings: Finding[];
+  /** On-demand approve/remove calls for this one contract. Not a watcher. */
+  approvalHistory: ApprovalEvent[];
+  approvalHistoryNote?: string;
   limitations: string[];
   sources: string[];
   attribution: string[];
@@ -156,6 +173,15 @@ export interface RegistrationEvidence {
   timestampSec?: number;
 }
 
+export interface ShadeV2Agent {
+  accountId: string;
+  measurements: ApprovedMeasurementRow;
+  ppid?: string;
+  validUntilMs?: number;
+  validity: string;
+  valid: boolean;
+}
+
 export interface EvidenceBundle {
   target: string;
   network: Network | "offline";
@@ -169,9 +195,13 @@ export interface EvidenceBundle {
   failedRegistrationCount?: number;
   compose: ComposeFacts | null;
   agentView?: AgentView | null;
+  v2Agents?: ShadeV2Agent[];
+  requiresTee?: boolean | null;
   approvedCodehashes?: ApprovedCodehash[];
   codehashHistoryComplete?: boolean;
   approvedMeasurements?: ApprovedMeasurementRow[];
+  approvalHistory?: ApprovalEvent[];
+  approvalHistoryNote?: string;
   accessKeys?: AccessKeyView[];
   accessKeyError?: string;
   mpc?: MpcAllowlist[];
@@ -189,7 +219,7 @@ export const PHALA_POSTMORTEM_URL =
 
 export const MEASURE_REPO_URL = "https://github.com/dreyyyy1/measure";
 
-export const GLASSBOX_VERSION = "0.1.0";
+export const GLASSBOX_VERSION = "0.2.0";
 
 /** Phala's stated auto-upgrade / v0.3.x retirement boundary. */
 export const AUTO_UPGRADE_AT = Date.parse("2026-11-20T00:00:00.000Z");
