@@ -1,0 +1,8 @@
+{
+  "name": "mcp",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Placeholder. An MCP server for Glassbox is a later run. Do not implement it in day 1.",
+  "type": "module"
+}
