@@ -1,8 +1,25 @@
 {
-  "name": "mcp",
-  "version": "0.0.0",
+  "name": "glassbox-mcp",
+  "version": "0.2.0",
   "private": true,
   "license": "MIT",
-  "description": "Placeholder. An MCP server for Glassbox is a later run. Do not implement it in day 1.",
-  "type": "module"
+  "type": "module",
+  "description": "MCP server that audits a NEAR agent account with Glassbox.",
+  "bin": {
+    "glassbox-mcp": "./bin/glassbox-mcp.js"
+  },
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "core": "workspace:*",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
 }
