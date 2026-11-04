@@ -1,0 +1,48 @@
+Glassbox
+Copyright (c) 2026 Adelekejr
+
+This product is MIT licensed. See LICENSE.
+
+It depends on and includes data from the following works. Their licences
+stay with them. Apache-2.0 code can be used from an MIT project; the notices
+below are kept so that use is visible.
+
+---------------------------------------------------------------------------
+@phala/dcap-qvl (npm, pinned 0.7.1)
+Licence: Apache-2.0
+Copyright: Phala Network and contributors
+Source: https://github.com/Phala-Network/dcap-qvl
+Package: https://www.npmjs.com/package/@phala/dcap-qvl
+
+Glassbox uses this pure-JavaScript library to verify Intel TDX quotes and to
+read TCB status and advisory IDs. It is not vendored; it is installed as a
+dependency. Do not strip this notice when redistributing Glassbox.
+
+---------------------------------------------------------------------------
+Shade Agent CLI measurement tables
+Licence: Apache-2.0
+Copyright: NearDeFi and contributors
+Source: https://github.com/NearDeFi/shade-agent-framework
+File: shade-agent-cli/src/utils/measurements.js
+Commit used for the copy in packages/core/src/data/shade-measurements.ts:
+35758f3 (framework revision cited for Shade v2; the table file was read from
+that tree on 2026-11-04).
+
+The tables cover dstack 0.5.7 and 0.5.8 only. Glassbox labels any conclusion
+drawn from them as a comparison against that published table.
+
+---------------------------------------------------------------------------
+NearBlocks
+History reads that use the NearBlocks API must keep the attribution
+"Powered by Nearblocks.io APIs".
+Terms noted on 2026-11-04: free tier is personal use, about 6 calls per minute.
+Glassbox spaces those calls. It does not use NearBlocks for the NEAR RPC path.
+
+---------------------------------------------------------------------------
+Related work (not a dependency)
+https://github.com/dreyyyy1/measure — MPC docker-image measurement work.
+Glassbox only reads the public allowed_docker_image_hashes views on
+v1.signer (mainnet) and v1.signer-prod.testnet.
+
+Sibling project, separate codebase: Gideon, a NEAR pre-send safety checker
+by the same builder. Glassbox does not judge payment correctness.
