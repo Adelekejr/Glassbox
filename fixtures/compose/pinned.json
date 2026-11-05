@@ -1,0 +1,9 @@
+{
+  "name": "pinned-example",
+  "public_logs": false,
+  "public_sysinfo": false,
+  "kms_enabled": true,
+  "encrypted_env": "00112233445566778899aabbccddeeff",
+  "allowed_envs": ["APP_NAME"],
+  "docker_compose_file": "services:\n  app:\n    image: example/app@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n    restart: always\n"
+}

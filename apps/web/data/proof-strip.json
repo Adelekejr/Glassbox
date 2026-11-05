@@ -1,0 +1,1091 @@
+{
+  "tool": "glassbox",
+  "kind": "agent-index",
+  "source": "live",
+  "generatedAt": "2026-11-05T10:21:06.337Z",
+  "totals": {
+    "scanned": 7,
+    "proven": 0,
+    "vulnerableConfiguration": 4,
+    "notProven": 3,
+    "sentence": "7 agents scanned · 0 proven · 4 match a vulnerable configuration · 3 not proven"
+  },
+  "rows": [
+    {
+      "accountId": "ac-sandbox.votron.testnet",
+      "network": "testnet",
+      "shade": "shade-v1",
+      "overall": "RISKY",
+      "bucket": "vulnerable-configuration",
+      "configurationClass": "matches a vulnerable configuration",
+      "summary": {
+        "proven": 13,
+        "notProven": 4,
+        "risky": 10
+      },
+      "findings": [
+        {
+          "id": "access.keys",
+          "ladder": "RISKY",
+          "title": "Access keys can change or broadly call the account"
+        },
+        {
+          "id": "compose.kms",
+          "ladder": "RISKY",
+          "title": "Registered configuration has no encrypted env"
+        },
+        {
+          "id": "compose.sockets",
+          "ladder": "RISKY",
+          "title": "A docker or guest-agent socket is mounted into an app"
+        },
+        {
+          "id": "dstack.public_logs",
+          "ladder": "RISKY",
+          "title": "public_logs is true in the registered configuration"
+        },
+        {
+          "id": "dstack.public_sysinfo",
+          "ladder": "RISKY",
+          "title": "public_sysinfo is true in the registered configuration"
+        },
+        {
+          "id": "dstack.range",
+          "ladder": "RISKY",
+          "title": "Registered configuration matches a vulnerable configuration"
+        },
+        {
+          "id": "dstack.secret_env",
+          "ladder": "RISKY",
+          "title": "Registered configuration names secret-looking env vars"
+        },
+        {
+          "id": "dstack.upgrade",
+          "ladder": "RISKY",
+          "title": "20 Nov 2026 auto-upgrade or v0.3.x retirement may apply"
+        },
+        {
+          "id": "tdx.advisories",
+          "ladder": "RISKY",
+          "title": "Advisory IDs are attached to the registered configuration"
+        },
+        {
+          "id": "tdx.fresh",
+          "ladder": "RISKY",
+          "title": "Registered configuration's TCB is now OutOfDate"
+        },
+        {
+          "id": "compose.allowed_envs",
+          "ladder": "NOT_PROVEN",
+          "title": "allowed_envs was not in the registered configuration"
+        },
+        {
+          "id": "measurements.approved",
+          "ladder": "NOT_PROVEN",
+          "title": "No on-contract list of approved TDX measurements"
+        },
+        {
+          "id": "mpc.allowlist",
+          "ladder": "NOT_PROVEN",
+          "title": "Registered image digests were not on the MPC allowlist"
+        },
+        {
+          "id": "runtime.observed",
+          "ladder": "NOT_PROVEN",
+          "title": "What the account is executing now was not observed"
+        },
+        {
+          "id": "codehash.approved",
+          "ladder": "PROVEN",
+          "title": "App codehash is in approve_codehash history"
+        },
+        {
+          "id": "compose.debug_images",
+          "ladder": "PROVEN",
+          "title": "Registered images are not debug or dev images"
+        },
+        {
+          "id": "compose.hash",
+          "ladder": "PROVEN",
+          "title": "Compose hash matches the registered event"
+        },
+        {
+          "id": "compose.plaintext_secrets",
+          "ladder": "PROVEN",
+          "title": "No plaintext secret values in the registered configuration"
+        },
+        {
+          "id": "images.pin",
+          "ladder": "PROVEN",
+          "title": "Registered images are pinned by digest"
+        },
+        {
+          "id": "measurements.quote_match",
+          "ladder": "PROVEN",
+          "title": "Quote measurements match the registered tcb_info"
+        },
+        {
+          "id": "rtmr.replay",
+          "ladder": "PROVEN",
+          "title": "RTMR replay matches the registered values"
+        },
+        {
+          "id": "shade.interface",
+          "ladder": "PROVEN",
+          "title": "Account interface is shade-v1"
+        },
+        {
+          "id": "tdx.debug",
+          "ladder": "PROVEN",
+          "title": "Registered quote is not a debug TD"
+        },
+        {
+          "id": "tdx.qe_identity",
+          "ladder": "PROVEN",
+          "title": "QE identity verified"
+        },
+        {
+          "id": "tdx.registration",
+          "ladder": "PROVEN",
+          "title": "TCB status at registration is UpToDate"
+        },
+        {
+          "id": "tdx.report_data",
+          "ladder": "PROVEN",
+          "title": "Quote report data binds the registering account"
+        },
+        {
+          "id": "tdx.signature",
+          "ladder": "PROVEN",
+          "title": "Quote signature verified"
+        }
+      ],
+      "evidence": [
+        {
+          "label": "view_access_key_list",
+          "detail": "1 keys"
+        },
+        {
+          "label": "app_compose.kms_enabled",
+          "detail": "true"
+        },
+        {
+          "label": "app_compose.encrypted_env",
+          "detail": "absent"
+        },
+        {
+          "label": "docker_compose_file volumes: /var/run/tappd.sock"
+        },
+        {
+          "label": "app_compose.public_logs",
+          "detail": "true"
+        },
+        {
+          "label": "app_compose.public_sysinfo",
+          "detail": "true"
+        },
+        {
+          "label": "Phala post-mortem"
+        },
+        {
+          "label": "NEAR_SEED_PHRASE",
+          "detail": "name only"
+        },
+        {
+          "label": "ANTHROPIC_API_KEY",
+          "detail": "name only"
+        },
+        {
+          "label": "AWS_ACCESS_KEY_ID",
+          "detail": "name only"
+        },
+        {
+          "label": "AWS_SECRET_ACCESS_KEY",
+          "detail": "name only"
+        },
+        {
+          "label": "AWS_SESSION_TOKEN",
+          "detail": "name only"
+        },
+        {
+          "label": "Phala post-mortem"
+        },
+        {
+          "label": "INTEL-SA-01192"
+        },
+        {
+          "label": "INTEL-SA-01245"
+        },
+        {
+          "label": "INTEL-SA-01312"
+        },
+        {
+          "label": "INTEL-SA-01313"
+        },
+        {
+          "label": "INTEL-SA-01367"
+        },
+        {
+          "label": "Registration transaction",
+          "detail": "HczqYXdRBZfyTtnQiPqGRXe3zEhvwHu3hyCUkqMq8VjN"
+        },
+        {
+          "label": "Phala PCCS",
+          "detail": "allowlisted; caller URLs are not accepted"
+        }
+      ]
+    },
+    {
+      "accountId": "ac-sandbox.ajitesh-1.testnet",
+      "network": "testnet",
+      "shade": "shade-v1",
+      "overall": "RISKY",
+      "bucket": "vulnerable-configuration",
+      "configurationClass": "matches a vulnerable configuration",
+      "summary": {
+        "proven": 14,
+        "notProven": 5,
+        "risky": 8
+      },
+      "findings": [
+        {
+          "id": "access.keys",
+          "ladder": "RISKY",
+          "title": "Access keys can change or broadly call the account"
+        },
+        {
+          "id": "compose.kms",
+          "ladder": "RISKY",
+          "title": "Registered configuration has no encrypted env"
+        },
+        {
+          "id": "compose.sockets",
+          "ladder": "RISKY",
+          "title": "A docker or guest-agent socket is mounted into an app"
+        },
+        {
+          "id": "dstack.public_logs",
+          "ladder": "RISKY",
+          "title": "public_logs is true in the registered configuration"
+        },
+        {
+          "id": "dstack.public_sysinfo",
+          "ladder": "RISKY",
+          "title": "public_sysinfo is true in the registered configuration"
+        },
+        {
+          "id": "dstack.range",
+          "ladder": "RISKY",
+          "title": "Registered configuration matches a vulnerable configuration"
+        },
+        {
+          "id": "dstack.secret_env",
+          "ladder": "RISKY",
+          "title": "Registered configuration names secret-looking env vars"
+        },
+        {
+          "id": "dstack.upgrade",
+          "ladder": "RISKY",
+          "title": "20 Nov 2026 auto-upgrade or v0.3.x retirement may apply"
+        },
+        {
+          "id": "codehash.approved",
+          "ladder": "NOT_PROVEN",
+          "title": "Agent codehash was not loaded"
+        },
+        {
+          "id": "compose.allowed_envs",
+          "ladder": "NOT_PROVEN",
+          "title": "allowed_envs was not in the registered configuration"
+        },
+        {
+          "id": "measurements.approved",
+          "ladder": "NOT_PROVEN",
+          "title": "No on-contract list of approved TDX measurements"
+        },
+        {
+          "id": "mpc.allowlist",
+          "ladder": "NOT_PROVEN",
+          "title": "Registered image digests were not on the MPC allowlist"
+        },
+        {
+          "id": "runtime.observed",
+          "ladder": "NOT_PROVEN",
+          "title": "What the account is executing now was not observed"
+        },
+        {
+          "id": "compose.debug_images",
+          "ladder": "PROVEN",
+          "title": "Registered images are not debug or dev images"
+        },
+        {
+          "id": "compose.hash",
+          "ladder": "PROVEN",
+          "title": "Compose hash matches the registered event"
+        },
+        {
+          "id": "compose.plaintext_secrets",
+          "ladder": "PROVEN",
+          "title": "No plaintext secret values in the registered configuration"
+        },
+        {
+          "id": "images.pin",
+          "ladder": "PROVEN",
+          "title": "Registered images are pinned by digest"
+        },
+        {
+          "id": "measurements.quote_match",
+          "ladder": "PROVEN",
+          "title": "Quote measurements match the registered tcb_info"
+        },
+        {
+          "id": "rtmr.replay",
+          "ladder": "PROVEN",
+          "title": "RTMR replay matches the registered values"
+        },
+        {
+          "id": "shade.interface",
+          "ladder": "PROVEN",
+          "title": "Account interface is shade-v1"
+        },
+        {
+          "id": "tdx.advisories",
+          "ladder": "PROVEN",
+          "title": "No advisory IDs were returned"
+        },
+        {
+          "id": "tdx.debug",
+          "ladder": "PROVEN",
+          "title": "Registered quote is not a debug TD"
+        },
+        {
+          "id": "tdx.fresh",
+          "ladder": "PROVEN",
+          "title": "Registered configuration's TCB is now UpToDate"
+        },
+        {
+          "id": "tdx.qe_identity",
+          "ladder": "PROVEN",
+          "title": "QE identity verified"
+        },
+        {
+          "id": "tdx.registration",
+          "ladder": "PROVEN",
+          "title": "TCB status at registration is UpToDate"
+        },
+        {
+          "id": "tdx.report_data",
+          "ladder": "PROVEN",
+          "title": "Quote report data binds the registering account"
+        },
+        {
+          "id": "tdx.signature",
+          "ladder": "PROVEN",
+          "title": "Quote signature verified"
+        }
+      ],
+      "evidence": [
+        {
+          "label": "view_access_key_list",
+          "detail": "1 keys"
+        },
+        {
+          "label": "app_compose.kms_enabled",
+          "detail": "true"
+        },
+        {
+          "label": "app_compose.encrypted_env",
+          "detail": "absent"
+        },
+        {
+          "label": "docker_compose_file volumes: /var/run/tappd.sock"
+        },
+        {
+          "label": "app_compose.public_logs",
+          "detail": "true"
+        },
+        {
+          "label": "app_compose.public_sysinfo",
+          "detail": "true"
+        },
+        {
+          "label": "Phala post-mortem"
+        },
+        {
+          "label": "NEAR_SEED_PHRASE",
+          "detail": "name only"
+        },
+        {
+          "label": "NEAR_AI_API_KEY",
+          "detail": "name only"
+        },
+        {
+          "label": "AWS_ACCESS_KEY_ID",
+          "detail": "name only"
+        },
+        {
+          "label": "AWS_SECRET_ACCESS_KEY",
+          "detail": "name only"
+        },
+        {
+          "label": "AWS_SESSION_TOKEN",
+          "detail": "name only"
+        },
+        {
+          "label": "token",
+          "detail": "name only"
+        },
+        {
+          "label": "DSTACK_ROOT_PASSWORD",
+          "detail": "name only"
+        },
+        {
+          "label": "Phala post-mortem"
+        }
+      ]
+    },
+    {
+      "accountId": "ac-sandbox.nova-shade-agent.testnet",
+      "network": "testnet",
+      "shade": "shade-v1",
+      "overall": "RISKY",
+      "bucket": "vulnerable-configuration",
+      "configurationClass": "matches a vulnerable configuration",
+      "summary": {
+        "proven": 14,
+        "notProven": 4,
+        "risky": 9
+      },
+      "findings": [
+        {
+          "id": "access.keys",
+          "ladder": "RISKY",
+          "title": "Access keys can change or broadly call the account"
+        },
+        {
+          "id": "compose.allowed_envs",
+          "ladder": "RISKY",
+          "title": "allowed_envs is overly broad in the registered configuration"
+        },
+        {
+          "id": "compose.kms",
+          "ladder": "RISKY",
+          "title": "Registered configuration has no encrypted env"
+        },
+        {
+          "id": "compose.sockets",
+          "ladder": "RISKY",
+          "title": "A docker or guest-agent socket is mounted into an app"
+        },
+        {
+          "id": "dstack.public_logs",
+          "ladder": "RISKY",
+          "title": "public_logs is true in the registered configuration"
+        },
+        {
+          "id": "dstack.public_sysinfo",
+          "ladder": "RISKY",
+          "title": "public_sysinfo is true in the registered configuration"
+        },
+        {
+          "id": "dstack.range",
+          "ladder": "RISKY",
+          "title": "Registered configuration matches a vulnerable configuration"
+        },
+        {
+          "id": "dstack.secret_env",
+          "ladder": "RISKY",
+          "title": "Registered configuration names secret-looking env vars"
+        },
+        {
+          "id": "dstack.upgrade",
+          "ladder": "RISKY",
+          "title": "20 Nov 2026 auto-upgrade or v0.3.x retirement may apply"
+        },
+        {
+          "id": "codehash.approved",
+          "ladder": "NOT_PROVEN",
+          "title": "Agent codehash was not loaded"
+        },
+        {
+          "id": "measurements.approved",
+          "ladder": "NOT_PROVEN",
+          "title": "No on-contract list of approved TDX measurements"
+        },
+        {
+          "id": "mpc.allowlist",
+          "ladder": "NOT_PROVEN",
+          "title": "Registered image digests were not on the MPC allowlist"
+        },
+        {
+          "id": "runtime.observed",
+          "ladder": "NOT_PROVEN",
+          "title": "What the account is executing now was not observed"
+        },
+        {
+          "id": "compose.debug_images",
+          "ladder": "PROVEN",
+          "title": "Registered images are not debug or dev images"
+        },
+        {
+          "id": "compose.hash",
+          "ladder": "PROVEN",
+          "title": "Compose hash matches the registered event"
+        },
+        {
+          "id": "compose.plaintext_secrets",
+          "ladder": "PROVEN",
+          "title": "No plaintext secret values in the registered configuration"
+        },
+        {
+          "id": "images.pin",
+          "ladder": "PROVEN",
+          "title": "Registered images are pinned by digest"
+        },
+        {
+          "id": "measurements.quote_match",
+          "ladder": "PROVEN",
+          "title": "Quote measurements match the registered tcb_info"
+        },
+        {
+          "id": "rtmr.replay",
+          "ladder": "PROVEN",
+          "title": "RTMR replay matches the registered values"
+        },
+        {
+          "id": "shade.interface",
+          "ladder": "PROVEN",
+          "title": "Account interface is shade-v1"
+        },
+        {
+          "id": "tdx.advisories",
+          "ladder": "PROVEN",
+          "title": "No advisory IDs were returned"
+        },
+        {
+          "id": "tdx.debug",
+          "ladder": "PROVEN",
+          "title": "Registered quote is not a debug TD"
+        },
+        {
+          "id": "tdx.fresh",
+          "ladder": "PROVEN",
+          "title": "Registered configuration's TCB is now UpToDate"
+        },
+        {
+          "id": "tdx.qe_identity",
+          "ladder": "PROVEN",
+          "title": "QE identity verified"
+        },
+        {
+          "id": "tdx.registration",
+          "ladder": "PROVEN",
+          "title": "TCB status at registration is UpToDate"
+        },
+        {
+          "id": "tdx.report_data",
+          "ladder": "PROVEN",
+          "title": "Quote report data binds the registering account"
+        },
+        {
+          "id": "tdx.signature",
+          "ladder": "PROVEN",
+          "title": "Quote signature verified"
+        }
+      ],
+      "evidence": [
+        {
+          "label": "view_access_key_list",
+          "detail": "1 keys"
+        },
+        {
+          "label": "app_compose.allowed_envs"
+        },
+        {
+          "label": "app_compose.kms_enabled",
+          "detail": "true"
+        },
+        {
+          "label": "app_compose.encrypted_env",
+          "detail": "absent"
+        },
+        {
+          "label": "docker_compose_file volumes: /var/run/tappd.sock"
+        },
+        {
+          "label": "app_compose.public_logs",
+          "detail": "true"
+        },
+        {
+          "label": "app_compose.public_sysinfo",
+          "detail": "true"
+        },
+        {
+          "label": "Phala post-mortem"
+        },
+        {
+          "label": "NEAR_SEED_PHRASE",
+          "detail": "name only"
+        },
+        {
+          "label": "JWT_SECRET",
+          "detail": "name only"
+        },
+        {
+          "label": "AUTH0_CLIENT_SECRET",
+          "detail": "name only"
+        },
+        {
+          "label": "TEE_KEY_SECRET",
+          "detail": "name only"
+        },
+        {
+          "label": "AWS_ACCESS_KEY_ID",
+          "detail": "name only"
+        },
+        {
+          "label": "AWS_SECRET_ACCESS_KEY",
+          "detail": "name only"
+        },
+        {
+          "label": "AWS_SESSION_TOKEN",
+          "detail": "name only"
+        },
+        {
+          "label": "DSTACK_ROOT_PASSWORD",
+          "detail": "name only"
+        },
+        {
+          "label": "Phala post-mortem"
+        }
+      ]
+    },
+    {
+      "accountId": "ac-sandbox.leo-leo-leo.testnet",
+      "network": "testnet",
+      "shade": "shade-v1-worker",
+      "overall": "RISKY",
+      "bucket": "vulnerable-configuration",
+      "configurationClass": "matches a vulnerable configuration",
+      "summary": {
+        "proven": 6,
+        "notProven": 11,
+        "risky": 10
+      },
+      "findings": [
+        {
+          "id": "access.keys",
+          "ladder": "RISKY",
+          "title": "Access keys can change or broadly call the account"
+        },
+        {
+          "id": "compose.kms",
+          "ladder": "RISKY",
+          "title": "Registered configuration has no encrypted env"
+        },
+        {
+          "id": "compose.sockets",
+          "ladder": "RISKY",
+          "title": "A docker or guest-agent socket is mounted into an app"
+        },
+        {
+          "id": "dstack.public_logs",
+          "ladder": "RISKY",
+          "title": "public_logs is true in the registered configuration"
+        },
+        {
+          "id": "dstack.public_sysinfo",
+          "ladder": "RISKY",
+          "title": "public_sysinfo is true in the registered configuration"
+        },
+        {
+          "id": "dstack.range",
+          "ladder": "RISKY",
+          "title": "Registered configuration matches a vulnerable configuration"
+        },
+        {
+          "id": "dstack.secret_env",
+          "ladder": "RISKY",
+          "title": "Registered configuration names secret-looking env vars"
+        },
+        {
+          "id": "dstack.upgrade",
+          "ladder": "RISKY",
+          "title": "20 Nov 2026 auto-upgrade or v0.3.x retirement may apply"
+        },
+        {
+          "id": "tdx.advisories",
+          "ladder": "RISKY",
+          "title": "Advisory IDs are attached to the registered configuration"
+        },
+        {
+          "id": "tdx.fresh",
+          "ladder": "RISKY",
+          "title": "Registered configuration's TCB is now OutOfDate"
+        },
+        {
+          "id": "codehash.approved",
+          "ladder": "NOT_PROVEN",
+          "title": "Agent codehash was not loaded"
+        },
+        {
+          "id": "compose.allowed_envs",
+          "ladder": "NOT_PROVEN",
+          "title": "allowed_envs was not in the registered configuration"
+        },
+        {
+          "id": "measurements.approved",
+          "ladder": "NOT_PROVEN",
+          "title": "No on-contract list of approved TDX measurements"
+        },
+        {
+          "id": "measurements.quote_match",
+          "ladder": "NOT_PROVEN",
+          "title": "Quote measurements were not accepted"
+        },
+        {
+          "id": "mpc.allowlist",
+          "ladder": "NOT_PROVEN",
+          "title": "Registered image digests were not on the MPC allowlist"
+        },
+        {
+          "id": "runtime.observed",
+          "ladder": "NOT_PROVEN",
+          "title": "What the account is executing now was not observed"
+        },
+        {
+          "id": "tdx.debug",
+          "ladder": "NOT_PROVEN",
+          "title": "Debug bit was not accepted"
+        },
+        {
+          "id": "tdx.qe_identity",
+          "ladder": "NOT_PROVEN",
+          "title": "QE identity was not accepted"
+        },
+        {
+          "id": "tdx.registration",
+          "ladder": "NOT_PROVEN",
+          "title": "TCB status at registration was not accepted"
+        },
+        {
+          "id": "tdx.report_data",
+          "ladder": "NOT_PROVEN",
+          "title": "Quote report data was not accepted"
+        },
+        {
+          "id": "tdx.signature",
+          "ladder": "NOT_PROVEN",
+          "title": "Quote signature did not verify"
+        },
+        {
+          "id": "compose.debug_images",
+          "ladder": "PROVEN",
+          "title": "Registered images are not debug or dev images"
+        },
+        {
+          "id": "compose.hash",
+          "ladder": "PROVEN",
+          "title": "Compose hash matches the registered event"
+        },
+        {
+          "id": "compose.plaintext_secrets",
+          "ladder": "PROVEN",
+          "title": "No plaintext secret values in the registered configuration"
+        },
+        {
+          "id": "images.pin",
+          "ladder": "PROVEN",
+          "title": "Registered images are pinned by digest"
+        },
+        {
+          "id": "rtmr.replay",
+          "ladder": "PROVEN",
+          "title": "RTMR replay matches the registered values"
+        },
+        {
+          "id": "shade.interface",
+          "ladder": "PROVEN",
+          "title": "Account interface is shade-v1-worker"
+        }
+      ],
+      "evidence": [
+        {
+          "label": "view_access_key_list",
+          "detail": "1 keys"
+        },
+        {
+          "label": "app_compose.kms_enabled",
+          "detail": "true"
+        },
+        {
+          "label": "app_compose.encrypted_env",
+          "detail": "absent"
+        },
+        {
+          "label": "docker_compose_file volumes: /var/run/tappd.sock"
+        },
+        {
+          "label": "app_compose.public_logs",
+          "detail": "true"
+        },
+        {
+          "label": "app_compose.public_sysinfo",
+          "detail": "true"
+        },
+        {
+          "label": "Phala post-mortem"
+        },
+        {
+          "label": "NEAR_SEED_PHRASE",
+          "detail": "name only"
+        },
+        {
+          "label": "OPENAI_API_KEY",
+          "detail": "name only"
+        },
+        {
+          "label": "COMPOSIO_API_KEY",
+          "detail": "name only"
+        },
+        {
+          "label": "Phala post-mortem"
+        },
+        {
+          "label": "INTEL-SA-01268"
+        },
+        {
+          "label": "INTEL-SA-01273"
+        },
+        {
+          "label": "INTEL-SA-01278"
+        },
+        {
+          "label": "INTEL-SA-01192"
+        },
+        {
+          "label": "INTEL-SA-01245"
+        },
+        {
+          "label": "INTEL-SA-01312"
+        },
+        {
+          "label": "INTEL-SA-01313"
+        },
+        {
+          "label": "INTEL-SA-01367"
+        },
+        {
+          "label": "Phala PCCS",
+          "detail": "allowlisted; caller URLs are not accepted"
+        }
+      ]
+    },
+    {
+      "accountId": "ac-proxy.leo-leo-leo.testnet",
+      "network": "testnet",
+      "shade": "shade-v1-worker",
+      "overall": "RISKY",
+      "bucket": "not-proven",
+      "configurationClass": "not proven",
+      "summary": {
+        "proven": 1,
+        "notProven": 7,
+        "risky": 1
+      },
+      "findings": [
+        {
+          "id": "access.keys",
+          "ladder": "RISKY",
+          "title": "Access keys can change or broadly call the account"
+        },
+        {
+          "id": "codehash.approved",
+          "ladder": "NOT_PROVEN",
+          "title": "Agent codehash was not loaded"
+        },
+        {
+          "id": "dstack.range",
+          "ladder": "NOT_PROVEN",
+          "title": "dstack release was not proven"
+        },
+        {
+          "id": "dstack.upgrade",
+          "ladder": "NOT_PROVEN",
+          "title": "20 Nov 2026 schedule could not be applied"
+        },
+        {
+          "id": "measurements.approved",
+          "ladder": "NOT_PROVEN",
+          "title": "No on-contract list of approved TDX measurements"
+        },
+        {
+          "id": "mpc.allowlist",
+          "ladder": "NOT_PROVEN",
+          "title": "Registered image digests were not on the MPC allowlist"
+        },
+        {
+          "id": "runtime.observed",
+          "ladder": "NOT_PROVEN",
+          "title": "What the account is executing now was not observed"
+        },
+        {
+          "id": "tdx.registration",
+          "ladder": "NOT_PROVEN",
+          "title": "No registration quote was loaded"
+        },
+        {
+          "id": "shade.interface",
+          "ladder": "PROVEN",
+          "title": "Account interface is shade-v1-worker"
+        }
+      ],
+      "evidence": [
+        {
+          "label": "view_access_key_list",
+          "detail": "1 keys"
+        },
+        {
+          "label": "Phala post-mortem"
+        }
+      ]
+    },
+    {
+      "accountId": "reflect-adam-mainnet-agent-contract.near",
+      "network": "mainnet",
+      "shade": "shade-v1",
+      "overall": "RISKY",
+      "bucket": "not-proven",
+      "configurationClass": "not proven",
+      "summary": {
+        "proven": 2,
+        "notProven": 6,
+        "risky": 1
+      },
+      "findings": [
+        {
+          "id": "access.keys",
+          "ladder": "RISKY",
+          "title": "Access keys can change or broadly call the account"
+        },
+        {
+          "id": "dstack.range",
+          "ladder": "NOT_PROVEN",
+          "title": "dstack release was not proven"
+        },
+        {
+          "id": "dstack.upgrade",
+          "ladder": "NOT_PROVEN",
+          "title": "20 Nov 2026 schedule could not be applied"
+        },
+        {
+          "id": "measurements.approved",
+          "ladder": "NOT_PROVEN",
+          "title": "No on-contract list of approved TDX measurements"
+        },
+        {
+          "id": "mpc.allowlist",
+          "ladder": "NOT_PROVEN",
+          "title": "Registered image digests were not on the MPC allowlist"
+        },
+        {
+          "id": "runtime.observed",
+          "ladder": "NOT_PROVEN",
+          "title": "What the account is executing now was not observed"
+        },
+        {
+          "id": "tdx.registration",
+          "ladder": "NOT_PROVEN",
+          "title": "No registration quote was loaded"
+        },
+        {
+          "id": "codehash.approved",
+          "ladder": "PROVEN",
+          "title": "App codehash is in approve_codehash history"
+        },
+        {
+          "id": "shade.interface",
+          "ladder": "PROVEN",
+          "title": "Account interface is shade-v1"
+        }
+      ],
+      "evidence": [
+        {
+          "label": "view_access_key_list",
+          "detail": "1 keys"
+        },
+        {
+          "label": "Phala post-mortem"
+        }
+      ]
+    },
+    {
+      "accountId": "ironshield.near",
+      "network": "mainnet",
+      "shade": "shade-v2",
+      "overall": "RISKY",
+      "bucket": "not-proven",
+      "configurationClass": "not proven",
+      "summary": {
+        "proven": 1,
+        "notProven": 6,
+        "risky": 1
+      },
+      "findings": [
+        {
+          "id": "access.keys",
+          "ladder": "RISKY",
+          "title": "Access keys can change or broadly call the account"
+        },
+        {
+          "id": "dstack.range",
+          "ladder": "NOT_PROVEN",
+          "title": "dstack release was not proven"
+        },
+        {
+          "id": "dstack.upgrade",
+          "ladder": "NOT_PROVEN",
+          "title": "20 Nov 2026 schedule could not be applied"
+        },
+        {
+          "id": "measurements.approved",
+          "ladder": "NOT_PROVEN",
+          "title": "Approved measurements were not loaded"
+        },
+        {
+          "id": "mpc.allowlist",
+          "ladder": "NOT_PROVEN",
+          "title": "Registered image digests were not on the MPC allowlist"
+        },
+        {
+          "id": "runtime.observed",
+          "ladder": "NOT_PROVEN",
+          "title": "What the account is executing now was not observed"
+        },
+        {
+          "id": "tdx.registration",
+          "ladder": "NOT_PROVEN",
+          "title": "No registration quote was loaded"
+        },
+        {
+          "id": "shade.interface",
+          "ladder": "PROVEN",
+          "title": "Account interface is shade-v2"
+        }
+      ],
+      "evidence": [
+        {
+          "label": "view_access_key_list",
+          "detail": "1 keys"
+        },
+        {
+          "label": "Phala post-mortem"
+        }
+      ]
+    }
+  ],
+  "attribution": [
+    "Powered by Nearblocks.io APIs."
+  ],
+  "note": "These rows describe registered configurations. They do not show what an account is executing now. Secret values are not included. Not proven is not a clean result. An account that is risky for another reason, such as its access keys, is counted in not proven here. The ladder on the row is the full result."
+}

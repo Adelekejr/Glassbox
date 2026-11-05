@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { checkAgent } from "./check.js";
+import { CHECK_AGENT_DESCRIPTION, CHECK_AGENT_TARGET_DESCRIPTION, checkAgent } from "./check.js";
 
 const server = new McpServer({
   name: "glassbox",
@@ -12,17 +12,10 @@ server.registerTool(
   "check_agent",
   {
     title: "Check a NEAR agent",
-    description:
-      "Read-only Glassbox audit of a NEAR account or a pasted registration, app-compose, or deployment JSON. Returns the PROVEN / NOT PROVEN / RISKY ladder, a short summary, and the highest rung. Does not send transactions and does not judge payments.",
+    description: CHECK_AGENT_DESCRIPTION,
     inputSchema: {
-      target: z
-        .string()
-        .min(1)
-        .max(2_000_000)
-        .describe(
-          "NEAR account id (ac-sandbox.votron.testnet), pasted JSON, or a local .json file. Other local paths are rejected. A .testnet or .near suffix selects the network.",
-        ),
-      network: z.enum(["testnet", "mainnet"]).optional().describe("Override network detection."),
+      target: z.string().min(1).max(2_000_000).describe(CHECK_AGENT_TARGET_DESCRIPTION),
+      network: z.enum(["testnet", "mainnet"]).optional().describe("testnet or mainnet."),
     },
   },
   async ({ target, network }) => {
