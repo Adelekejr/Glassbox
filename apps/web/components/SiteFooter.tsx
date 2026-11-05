@@ -45,7 +45,7 @@ export function SiteFooter() {
         </div>
         <div className="footer-base">
           <span>Copyright (c) 2026 Adelekejr · MIT</span>
-          <span>The local web form is not deployed.</span>
+          <span>This site is deployed at glassbox-inky.vercel.app.</span>
         </div>
       </div>
     </footer>

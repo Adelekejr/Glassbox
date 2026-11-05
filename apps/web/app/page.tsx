@@ -110,7 +110,7 @@ export default function Page() {
         <section className="section" id="surfaces" aria-labelledby="surfaces-title">
           <div className="wrap">
             <SecHead n="04" kicker="Surfaces" id="surfaces-title" title="You can ask in three places.">
-              The command line is <code>glassbox</code>. An agent tool is MCP <code>check_agent</code>. The local web form is the page from <code>pnpm --filter web dev</code>.
+              The command line is <code>glassbox</code>. An agent tool is MCP <code>check_agent</code>. This page is the web form, and it is deployed.
             </SecHead>
             <Surfaces />
           </div>
