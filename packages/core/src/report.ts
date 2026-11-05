@@ -24,6 +24,7 @@ import {
   type Ladder,
   type Measurements,
   type Report,
+  type ReportInputs,
 } from "./types.js";
 
 const LADDER_ORDER: Ladder[] = ["RISKY", "NOT_PROVEN", "PROVEN"];
@@ -67,6 +68,7 @@ export function buildReport(bundle: EvidenceBundle, options?: { now?: Date }): R
     network: bundle.network,
     shade: bundle.shade,
     generatedAt: bundle.generatedAt,
+    inputs: reportInputs(bundle),
     summary,
     overall,
     overallPlainEnglish: `Highest rung on this ladder is ${overall.replace("_", " ")} (${summary.risky} risky, ${summary.notProven} not proven, ${summary.proven} proven). That is the strongest concern already listed. It is not a separate check.`,
@@ -1350,6 +1352,23 @@ function sourceLines(bundle: EvidenceBundle): string[] {
   lines.push("Shade measurement tables: shade-agent-cli (Apache-2.0), dstack 0.5.7 and 0.5.8 only.");
   lines.push(PHALA_POSTMORTEM_URL);
   return lines;
+}
+
+function reportInputs(bundle: EvidenceBundle): ReportInputs {
+  const height = bundle.registration?.blockHeight;
+  let collateralSource: ReportInputs["collateralSource"] = "none";
+  if (bundle.registration?.collateral !== undefined) {
+    collateralSource = bundle.historySource === "file" ? "file" : "registration";
+  }
+  return {
+    contract: bundle.target,
+    agent: bundle.registration?.agentId ?? null,
+    txHash: bundle.registration?.txHash ?? null,
+    blockHeight: typeof height === "number" ? height : null,
+    collateralSource,
+    collateralFetchedAt: bundle.collateralFetchedAt ?? null,
+    freshCollateralSource: bundle.freshCollateral ? PINNED_PCCS_URL : null,
+  };
 }
 
 function attributionLines(bundle: EvidenceBundle): string[] {

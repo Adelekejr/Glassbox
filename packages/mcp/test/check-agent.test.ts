@@ -4,12 +4,14 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { checkAgent } from "../src/check.js";
+import { CHECK_AGENT_DESCRIPTION, checkAgent } from "../src/check.js";
+import { resetCheckLimiter } from "../src/limit.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixture = join(here, "../../core/test/fixtures/votron-registration.json");
 
 test("check_agent returns the ladder for a pasted registration file", async () => {
+  resetCheckLimiter();
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: ["--import", "tsx", join(here, "../src/main.ts")],
@@ -20,7 +22,14 @@ test("check_agent returns the ladder for a pasted registration file", async () =
   await client.connect(transport);
   try {
     const listed = await client.listTools();
-    assert.ok(listed.tools.some((tool) => tool.name === "check_agent"));
+    const tool = listed.tools.find((item) => item.name === "check_agent");
+    assert.ok(tool);
+    const described = JSON.stringify(tool);
+    assert.match(described, /Read-only audit/);
+    assert.doesNotMatch(described, /ignore previous|system prompt|you must|exfiltrate/i);
+    assert.equal(tool.description, CHECK_AGENT_DESCRIPTION);
+    const properties = Object.keys((tool.inputSchema as { properties?: Record<string, unknown> }).properties ?? {});
+    assert.deepEqual(properties.sort(), ["network", "target"]);
     const result = await client.callTool({ name: "check_agent", arguments: { target: fixture } });
     const text = textOf(result.content);
     const parsed = JSON.parse(text) as {
@@ -49,8 +58,30 @@ test("check_agent returns the ladder for a pasted registration file", async () =
 });
 
 test("check_agent refuses a local file that is not JSON", async () => {
+  resetCheckLimiter();
   const wasm = join(here, "../../core/test/fixtures/shade-contract-template.wasm");
   await assert.rejects(() => checkAgent({ target: wasm }), /json/i);
+});
+
+test("check_agent refuses URLs, bad account ids, and a caller PCCS URL", async () => {
+  resetCheckLimiter();
+  await assert.rejects(() => checkAgent({ target: "https://pccs.evil.example/agent" }), /URL/);
+  await assert.rejects(() => checkAgent({ target: "not an account" }), /account id/i);
+  await assert.rejects(
+    () => checkAgent({ target: "ac-sandbox.votron.testnet", pccsUrl: "https://evil.example" }),
+    /not accepted/,
+  );
+});
+
+test("check_agent rate-limits a burst", async () => {
+  resetCheckLimiter();
+  const body = JSON.stringify({ name: "rate-limit-probe", public_logs: false });
+  for (let index = 0; index < 6; index += 1) {
+    const result = await checkAgent({ target: body });
+    assert.ok(result.overall === "RISKY" || result.overall === "NOT_PROVEN" || result.overall === "PROVEN");
+  }
+  await assert.rejects(() => checkAgent({ target: body }), /Too many/);
+  resetCheckLimiter();
 });
 
 function textOf(content: unknown): string {

@@ -212,9 +212,11 @@ async function collectAccount(accountId: string, network: Network, options: Audi
 
   let freshCollateral: unknown;
   let freshCollateralError: string | undefined;
+  let collateralFetchedAt: string | undefined;
   if (registration?.quoteHex && !options.skipFreshCollateral) {
     try {
       freshCollateral = await fetchFreshCollateral(registration.quoteHex);
+      collateralFetchedAt = (options.now ?? new Date()).toISOString();
     } catch (error) {
       freshCollateralError = error instanceof Error ? error.message : String(error);
     }
@@ -252,6 +254,7 @@ async function collectAccount(accountId: string, network: Network, options: Audi
     mpc,
     freshCollateral,
     freshCollateralError,
+    collateralFetchedAt,
     historySource,
     historyError,
     rpcEndpoints: [...client.endpointLog, ...archival.endpointLog],
@@ -266,15 +269,19 @@ async function loadRegistration(
 ): Promise<RegistrationEvidence | null> {
   let args = call.args;
   let timestampSec = nsToSeconds(call.timestampNs);
+  let blockHeight: number | undefined;
   try {
     const tx = await archival.transaction(call.hash, call.signer);
     const extracted = extractFunctionCallArgs(tx);
     if (extracted) args = extracted;
-    if (!timestampSec) {
-      const blockHash = (tx as { transaction_outcome?: { block_hash?: string } } | null)?.transaction_outcome?.block_hash;
-      if (blockHash) {
+    const blockHash = (tx as { transaction_outcome?: { block_hash?: string } } | null)?.transaction_outcome?.block_hash;
+    if (blockHash) {
+      try {
         const block = await archival.block(blockHash);
-        timestampSec = nsToSeconds(block?.header?.timestamp);
+        if (!timestampSec) timestampSec = nsToSeconds(block?.header?.timestamp);
+        blockHeight = readBlockHeight(block?.header?.height);
+      } catch {
+        // The transaction body is enough when the block header is unavailable.
       }
     }
   } catch {
@@ -286,6 +293,7 @@ async function loadRegistration(
       agentId: call.signer,
       txHash: call.hash,
       timestampSec,
+      blockHeight,
     };
   }
   return {
@@ -298,6 +306,7 @@ async function loadRegistration(
     agentId: call.signer,
     txHash: call.hash,
     timestampSec,
+    blockHeight,
   };
 }
 
@@ -403,6 +412,15 @@ async function readMpcAllowlists(options: AuditOptions): Promise<MpcAllowlist[]>
     }
   }
   return lists;
+}
+
+function readBlockHeight(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) return value;
+  if (typeof value === "string" && /^\d{1,16}$/.test(value)) {
+    const parsed = Number(value);
+    if (Number.isSafeInteger(parsed)) return parsed;
+  }
+  return undefined;
 }
 
 function classifyShade(present: Set<string>): ShadeKind {

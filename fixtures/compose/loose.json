@@ -1,0 +1,5 @@
+{
+  "name": "loose-example",
+  "public_logs": true,
+  "docker_compose_file": "services:\n  app:\n    image: nginx:latest\n    environment:\n      API_KEY: supersecretvalue99\n    volumes:\n      - /var/run/tappd.sock:/var/run/tappd.sock\n"
+}

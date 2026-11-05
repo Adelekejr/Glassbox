@@ -12,7 +12,8 @@
   },
   "scripts": {
     "test": "node --import tsx --test test/*.test.ts",
-    "smoke": "tsx scripts/smoke.ts"
+    "smoke": "tsx scripts/smoke.ts",
+    "index": "tsx scripts/index.ts"
   },
   "dependencies": {
     "@phala/dcap-qvl": "0.7.1"

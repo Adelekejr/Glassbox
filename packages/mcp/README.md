@@ -6,7 +6,9 @@ Stdio MCP server. One tool, `check_agent`. It wraps the core auditor and returns
 - `summary` — one plain-English sentence
 - `report` — the same ladder the CLI prints
 
-It does not sign, and it does not judge payments.
+It does not send transactions, and it does not judge payments. It does not take a collateral URL. A NEAR account id is checked before any chain read. About six calls a minute are accepted in one process.
+
+The npm package is not published. The bin is `glassbox-mcp`, ready for a later `npx -y glassbox-mcp`. Do not publish it unless you mean to.
 
 ## Do run it from this repo
 
@@ -21,13 +23,13 @@ The package name is `glassbox-mcp`. It is not on npm yet, so point at this check
   "mcpServers": {
     "glassbox": {
       "command": "node",
-      "args": ["--import", "tsx", "/ABSOLUTE/PATH/Glassbox/packages/mcp/src/main.ts"]
+      "args": ["/ABSOLUTE/PATH/Glassbox/packages/mcp/bin/glassbox-mcp.js"]
     }
   }
 }
 ```
 
-`tsx` must be resolvable (it is a devDependency of `packages/mcp` after `pnpm install` at the repo root). After the package is published, this is enough:
+`tsx` is a dependency of `glassbox-mcp`, so the bin can start the TypeScript entry after `pnpm install` at the repo root. After the package is published, this is enough:
 
 ```json
 {
@@ -42,20 +44,20 @@ The package name is `glassbox-mcp`. It is not on npm yet, so point at this check
 
 ## Do install it for Cursor
 
-Cursor → Settings → MCP, or `.cursor/mcp.json` in the project. Same command as Claude Desktop. A local checkout:
+Cursor → Settings → MCP, or `.cursor/mcp.json` in the project. A local checkout:
 
 ```json
 {
   "mcpServers": {
     "glassbox": {
       "command": "node",
-      "args": ["--import", "tsx", "/ABSOLUTE/PATH/Glassbox/packages/mcp/src/main.ts"]
+      "args": ["/ABSOLUTE/PATH/Glassbox/packages/mcp/bin/glassbox-mcp.js"]
     }
   }
 }
 ```
 
-Published form:
+Published form (not published yet):
 
 ```json
 {
@@ -70,6 +72,6 @@ Published form:
 
 ## Do call the tool
 
-`target` is a NEAR account (`ac-sandbox.votron.testnet`) or pasted JSON. Optional `network` is `testnet` or `mainnet`. A `.testnet` or `.near` suffix selects the network when `network` is omitted.
+`target` is a NEAR account (`ac-sandbox.votron.testnet`) or pasted JSON. Optional `network` is `testnet` or `mainnet`. A `.testnet` or `.near` suffix selects the network when `network` is omitted. A URL is refused.
 
-The SDK is `@modelcontextprotocol/sdk` 1.32.2 (MIT).
+The SDK is `@modelcontextprotocol/sdk` 1.32.2 (MIT). `tsx` is MIT and is a dependency so the bin can run before a publish.

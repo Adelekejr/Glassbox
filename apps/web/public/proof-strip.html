@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Glassbox proof strip</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 1.5rem; color: #1c1c1c; line-height: 1.45; }
+    h1 { font-size: 1.3rem; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border-top: 1px solid #ddd; text-align: left; vertical-align: top; padding: 0.45rem 0.5rem; }
+    th { font-size: 0.8rem; letter-spacing: 0.04em; }
+  </style>
+</head>
+<body>
+  <h1>Glassbox</h1>
+  <p><strong>7 agents scanned · 0 proven · 4 match a vulnerable configuration · 3 not proven</strong></p>
+  <p>These rows describe registered configurations. They do not show what an account is executing now. Secret values are not included. Not proven is not a clean result. An account that is risky for another reason, such as its access keys, is counted in not proven here. The ladder on the row is the full result.</p>
+  <table>
+    <thead>
+      <tr><th>Account</th><th>Network</th><th>Ladder</th><th>Configuration</th><th>Redacted evidence</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>ac-sandbox.votron.testnet</td>
+        <td>testnet</td>
+        <td>RISKY</td>
+        <td>matches a vulnerable configuration</td>
+        <td>Access keys can change or broadly call the account<br>Registered configuration has no encrypted env<br>A docker or guest-agent socket is mounted into an app<br>public_logs is true in the registered configuration<br>public_sysinfo is true in the registered configuration<br>Registered configuration matches a vulnerable configuration<br>Registered configuration names secret-looking env vars<br>20 Nov 2026 auto-upgrade or v0.3.x retirement may apply<br>Advisory IDs are attached to the registered configuration<br>Registered configuration's TCB is now OutOfDate<br>view_access_key_list — 1 keys<br>app_compose.kms_enabled — true<br>app_compose.encrypted_env — absent<br>docker_compose_file volumes: /var/run/tappd.sock<br>app_compose.public_logs — true<br>app_compose.public_sysinfo — true<br>Phala post-mortem<br>NEAR_SEED_PHRASE — name only<br>ANTHROPIC_API_KEY — name only<br>AWS_ACCESS_KEY_ID — name only<br>AWS_SECRET_ACCESS_KEY — name only<br>AWS_SESSION_TOKEN — name only<br>Phala post-mortem<br>INTEL-SA-01192<br>INTEL-SA-01245<br>INTEL-SA-01312<br>INTEL-SA-01313<br>INTEL-SA-01367<br>Registration transaction — HczqYXdRBZfyTtnQiPqGRXe3zEhvwHu3hyCUkqMq8VjN<br>Phala PCCS — allowlisted; caller URLs are not accepted</td>
+      </tr>
+<tr>
+        <td>ac-sandbox.ajitesh-1.testnet</td>
+        <td>testnet</td>
+        <td>RISKY</td>
+        <td>matches a vulnerable configuration</td>
+        <td>Access keys can change or broadly call the account<br>Registered configuration has no encrypted env<br>A docker or guest-agent socket is mounted into an app<br>public_logs is true in the registered configuration<br>public_sysinfo is true in the registered configuration<br>Registered configuration matches a vulnerable configuration<br>Registered configuration names secret-looking env vars<br>20 Nov 2026 auto-upgrade or v0.3.x retirement may apply<br>view_access_key_list — 1 keys<br>app_compose.kms_enabled — true<br>app_compose.encrypted_env — absent<br>docker_compose_file volumes: /var/run/tappd.sock<br>app_compose.public_logs — true<br>app_compose.public_sysinfo — true<br>Phala post-mortem<br>NEAR_SEED_PHRASE — name only<br>NEAR_AI_API_KEY — name only<br>AWS_ACCESS_KEY_ID — name only<br>AWS_SECRET_ACCESS_KEY — name only<br>AWS_SESSION_TOKEN — name only<br>token — name only<br>DSTACK_ROOT_PASSWORD — name only<br>Phala post-mortem</td>
+      </tr>
+<tr>
+        <td>ac-sandbox.nova-shade-agent.testnet</td>
+        <td>testnet</td>
+        <td>RISKY</td>
+        <td>matches a vulnerable configuration</td>
+        <td>Access keys can change or broadly call the account<br>allowed_envs is overly broad in the registered configuration<br>Registered configuration has no encrypted env<br>A docker or guest-agent socket is mounted into an app<br>public_logs is true in the registered configuration<br>public_sysinfo is true in the registered configuration<br>Registered configuration matches a vulnerable configuration<br>Registered configuration names secret-looking env vars<br>20 Nov 2026 auto-upgrade or v0.3.x retirement may apply<br>view_access_key_list — 1 keys<br>app_compose.allowed_envs<br>app_compose.kms_enabled — true<br>app_compose.encrypted_env — absent<br>docker_compose_file volumes: /var/run/tappd.sock<br>app_compose.public_logs — true<br>app_compose.public_sysinfo — true<br>Phala post-mortem<br>NEAR_SEED_PHRASE — name only<br>JWT_SECRET — name only<br>AUTH0_CLIENT_SECRET — name only<br>TEE_KEY_SECRET — name only<br>AWS_ACCESS_KEY_ID — name only<br>AWS_SECRET_ACCESS_KEY — name only<br>AWS_SESSION_TOKEN — name only<br>DSTACK_ROOT_PASSWORD — name only<br>Phala post-mortem</td>
+      </tr>
+<tr>
+        <td>ac-sandbox.leo-leo-leo.testnet</td>
+        <td>testnet</td>
+        <td>RISKY</td>
+        <td>matches a vulnerable configuration</td>
+        <td>Access keys can change or broadly call the account<br>Registered configuration has no encrypted env<br>A docker or guest-agent socket is mounted into an app<br>public_logs is true in the registered configuration<br>public_sysinfo is true in the registered configuration<br>Registered configuration matches a vulnerable configuration<br>Registered configuration names secret-looking env vars<br>20 Nov 2026 auto-upgrade or v0.3.x retirement may apply<br>Advisory IDs are attached to the registered configuration<br>Registered configuration's TCB is now OutOfDate<br>view_access_key_list — 1 keys<br>app_compose.kms_enabled — true<br>app_compose.encrypted_env — absent<br>docker_compose_file volumes: /var/run/tappd.sock<br>app_compose.public_logs — true<br>app_compose.public_sysinfo — true<br>Phala post-mortem<br>NEAR_SEED_PHRASE — name only<br>OPENAI_API_KEY — name only<br>COMPOSIO_API_KEY — name only<br>Phala post-mortem<br>INTEL-SA-01268<br>INTEL-SA-01273<br>INTEL-SA-01278<br>INTEL-SA-01192<br>INTEL-SA-01245<br>INTEL-SA-01312<br>INTEL-SA-01313<br>INTEL-SA-01367<br>Phala PCCS — allowlisted; caller URLs are not accepted</td>
+      </tr>
+<tr>
+        <td>ac-proxy.leo-leo-leo.testnet</td>
+        <td>testnet</td>
+        <td>RISKY</td>
+        <td>not proven</td>
+        <td>Access keys can change or broadly call the account<br>view_access_key_list — 1 keys<br>Phala post-mortem</td>
+      </tr>
+<tr>
+        <td>reflect-adam-mainnet-agent-contract.near</td>
+        <td>mainnet</td>
+        <td>RISKY</td>
+        <td>not proven</td>
+        <td>Access keys can change or broadly call the account<br>view_access_key_list — 1 keys<br>Phala post-mortem</td>
+      </tr>
+<tr>
+        <td>ironshield.near</td>
+        <td>mainnet</td>
+        <td>RISKY</td>
+        <td>not proven</td>
+        <td>Access keys can change or broadly call the account<br>view_access_key_list — 1 keys<br>Phala post-mortem</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>Powered by Nearblocks.io APIs.</p>
+  <p>Registrations are read with register_agent and register_worker. Source: live. Generated 2026-11-05T10:21:06.337Z.</p>
+</body>
+</html>

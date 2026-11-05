@@ -2,7 +2,7 @@
 
 Free, open-source (MIT) public auditor for AI-agent contracts on NEAR. Entered in the NEAR Hackathon, Security track.
 
-Glassbox takes a NEAR account, or a pasted registration / app-compose / deployment JSON file, and prints one report. Every finding sits on a ladder: **PROVEN**, **NOT PROVEN**, or **RISKY**. Each line is plain English and, where a chain fact exists, links to it. The tool is read-only. It does not sign, and it does not send transactions.
+Glassbox takes a NEAR account, or a pasted registration / app-compose / deployment JSON file, and prints one report. Every finding sits on a ladder: **PROVEN**, **NOT PROVEN**, or **RISKY**. Each line is plain English and, where a chain fact exists, links to it. The tool does not send transactions. It can sign a report file on your computer. That key stays on that computer.
 
 It does not judge whether a payment is correct. That is [Gideon](#gideon), a separate project by the same builder.
 
@@ -10,8 +10,12 @@ It does not judge whether a payment is correct. That is [Gideon](#gideon), a sep
 
 - Do install and test — see `pnpm install` then `pnpm test` (Node 20+).
 - Do audit the captured votron registration on testnet — see `pnpm --filter cli start ac-sandbox.votron.testnet`.
-- Do print the same report as JSON — see `pnpm --filter cli start ac-sandbox.votron.testnet --json`.
+- Do print the same report as JSON — see `pnpm --filter cli start ac-sandbox.votron.testnet --json`. `--json` stays that report when you also pass `--sign`.
 - Do audit a file offline — see `node packages/cli/bin/glassbox.js packages/core/test/fixtures/votron-registration.json` from the repo root, or pass any registration, app-compose, or deployment JSON. Add `--json` for the machine report.
+- Do sign a report — see `--sign`. The signed file is `report.json` unless you pass `--out`.
+- Do check a signed report — see `glassbox verify report.json`.
+- Do gate a compose in CI — see `--fail-on risky` and `.github/workflows/compose-hygiene.yml`.
+- Do rebuild the proof strip — see `glassbox index` (local files) or `glassbox index --live` (the known accounts).
 - Do smoke the other public targets — see `pnpm smoke`.
 - Do run the MCP server — see `packages/mcp/README.md`. The tool is `check_agent`.
 - Do open the local web form — see `pnpm --filter web dev`, then http://localhost:3000. It is not deployed.
@@ -88,6 +92,25 @@ PROVEN
 Powered by Nearblocks.io APIs.
 ```
 
+## Signed reports
+
+`--sign` writes a signed report next to the human text. `--json` still prints the report itself.
+
+```bash
+node packages/cli/bin/glassbox.js packages/core/test/fixtures/votron-registration.json --sign --out report.json
+node packages/cli/bin/glassbox.js verify report.json --offline
+```
+
+The file holds the inputs (contract, agent, transaction, block height, collateral source and fetch time, Glassbox version, and `@phala/dcap-qvl`), the checks, and the verdict. It also holds the sha256 of that body and an ed25519 signature.
+
+The first `--sign` creates a key at `~/.config/glassbox/report-signing-key.pem` (or `GLASSBOX_SIGNING_KEY` if you set that path). A second file beside it, ending in `.pub`, is the public key in hex. Keep the private file to yourself. Do not commit it.
+
+`verify` checks the hash and the signature. When the report names a transaction, it reads that transaction again from the archival RPC. `.testnet` selects testnet. `.near` selects mainnet. An account with neither suffix uses the network recorded in the report. `--offline` checks the hash and signature only, which is how the saved votron file is checked without the network.
+
+Fresh collateral, access keys, and the MPC allowlists can change after the report is signed. Verify leaves those as they were signed and recomputes the registration checks.
+
+Anchoring the report hash on NEAR is a later opt-in. This build does not create an account and does not send a transaction. `GLASSBOX_ANCHOR=1` only records that you asked. It still sends nothing.
+
 ## MCP
 
 Do install it for an agent owner — see `packages/mcp/README.md` for Claude Desktop and Cursor snippets.
@@ -98,13 +121,78 @@ Do install it for an agent owner — see `packages/mcp/README.md` for Claude Des
 node packages/mcp/bin/glassbox-mcp.js
 ```
 
-After publish, `npx -y glassbox-mcp`.
+The package is not on npm yet. Do not publish it from this repo unless you mean to. After it is published, the one-liner is:
+
+```bash
+npx -y glassbox-mcp
+```
+
+Cursor (`.cursor/mcp.json`) and Claude Desktop, once the package is published:
+
+```json
+{
+  "mcpServers": {
+    "glassbox": {
+      "command": "npx",
+      "args": ["-y", "glassbox-mcp"]
+    }
+  }
+}
+```
+
+From this checkout, before that publish, point the command at `node` and `packages/mcp/bin/glassbox-mcp.js`. The same JSON shape is in `packages/mcp/README.md`.
+
+`check_agent` accepts a NEAR account id or JSON text. It refuses a URL, and it refuses a caller-supplied collateral host. A burst of calls in one process is limited to about six a minute.
 
 A live `check_agent` on `ac-sandbox.votron.testnet` on 2026-11-04 returned `overall: RISKY`, shade v1, 6 risky / 3 not proven / 9 proven, and an approval-history list of `approve_codehash` calls dated from August 2025. No `remove_codehash` calls were in the index. The response includes `Powered by Nearblocks.io APIs.`
 
+## Compose check
+
+[![Glassbox check](https://img.shields.io/badge/glassbox%20check-local%20compose-2ea44f)](https://github.com/Adelekejr/Glassbox/blob/main/.github/workflows/compose-hygiene.yml)
+
+There is no hosted report API, so the badge above is a static shields.io image. After the workflow is on the default branch of a public repo, a status badge can use:
+
+```
+https://img.shields.io/github/actions/workflow/status/Adelekejr/Glassbox/compose-hygiene.yml?branch=main&label=glassbox%20check
+```
+
+The Action runs `glassbox check fixtures/compose/pinned.json --fail-on risky`. That file is a pinned compose. It does not call a chain. The job fails when the audit has a risky finding. `fixtures/compose/loose.json` is the example that fails the gate (unpinned image, public logs, a socket mount).
+
+```bash
+node packages/cli/bin/glassbox.js check fixtures/compose/pinned.json --fail-on risky
+```
+
+## Proof strip
+
+The web form shows one line: how many agents were scanned, how many are proven, how many match a vulnerable configuration, and how many are not proven. Not proven is not a clean result.
+
+Rebuild it from the local fixtures (no NearBlocks calls):
+
+```bash
+node packages/cli/bin/glassbox.js index
+```
+
+The same command is `pnpm --filter core index`. It writes `apps/web/data/proof-strip.json` and `apps/web/public/proof-strip.html`.
+
+To read the known accounts, which does call NearBlocks and waits between calls (about 6 a minute):
+
+```bash
+node packages/cli/bin/glassbox.js index --live
+```
+
+That crawl includes the testnet accounts `ac-sandbox.votron.testnet`, `ac-sandbox.ajitesh-1.testnet`, `ac-sandbox.nova-shade-agent.testnet`, `ac-sandbox.leo-leo-leo.testnet`, and `ac-proxy.leo-leo-leo.testnet`, plus the mainnet accounts `reflect-adam-mainnet-agent-contract.near` and `ironshield.near`. It reads `register_agent`, and `register_worker` for a worker proxy. The saved index prints `Powered by Nearblocks.io APIs.` when NearBlocks was used. Secret values are left out. The row shows the configuration class and redacted evidence.
+
+Try the mainnet accounts, then check a signed report. These commands read public data. They do not send a transaction.
+
+```bash
+pnpm --filter cli start reflect-adam-mainnet-agent-contract.near
+pnpm --filter cli start ironshield.near --sign --out report.json
+node packages/cli/bin/glassbox.js verify report.json
+```
+
 ## Web
 
-Do run the form locally — see `pnpm --filter web dev`. Paste an account (the hint names testnet or mainnet from the suffix) or JSON. The page POSTs to `/api/audit`, which calls the core library. Styling is plain on purpose. Do not deploy it in this repo state.
+Do run the form locally — see `pnpm --filter web dev`. Paste an account (the hint names testnet or mainnet from the suffix) or JSON. The page POSTs to `/api/audit`, which calls the core library. The top of the page is the proof strip. Styling is plain on purpose. Do not deploy it in this repo state.
 
 ## Shade v2
 
@@ -120,8 +208,8 @@ Do read the dated approve/remove section — see the "Approval history" block in
 | --- | --- |
 | `packages/core` | Audit library. `pnpm --filter core test` runs the fixture tests. |
 | `packages/cli` | `glassbox <account-or-file>`. `start` is the command above. |
-| `packages/mcp` | Placeholder. Later run. |
-| `apps/web` | Placeholder. Later run. |
+| `packages/mcp` | `check_agent` over stdio. Bin `glassbox-mcp`. Not published. |
+| `apps/web` | Local form and the proof strip. Not deployed. |
 | `packages/core/test/fixtures/votron-registration.json` | Redacted capture of the votron `register_agent` arguments. |
 | `packages/core/scripts/smoke.ts` | Live read of the other public targets. |
 
@@ -150,6 +238,8 @@ MPC allowlists: view `allowed_docker_image_hashes` on `v1.signer` (mainnet) and 
 | `ac-proxy.leo-leo-leo.testnet` | Worker proxy, global contract `2pSLLgLnAM9PYD7Rj6SpdK9tJRz48GQ7GrnAXK6tmm8u`. |
 | `worker.outlayer.testnet` | `get_approved_measurements`. Not Shade v2 (`get_contract_info` is absent). RTMR1 `a7b52327…` is in neither Shade table. |
 | `v1.signer-prod.testnet` and `v1.signer` | MPC docker allowlists. Two hashes each; one hash expires 5 Nov 2026 (testnet) and 6 Nov 2026 (mainnet). |
+| `reflect-adam-mainnet-agent-contract.near` | Mainnet demo account. `.near` selects mainnet. |
+| `ironshield.near` | Mainnet demo account. `.near` selects mainnet. |
 
 No test account found here is Shade v2. A v2 report needs `get_contract_info` / `get_approved_measurements` from a deployment the owner accepts, or from the framework's local sandbox. The account the notes call "1prime" was not located.
 

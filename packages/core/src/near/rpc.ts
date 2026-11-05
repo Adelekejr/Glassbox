@@ -175,9 +175,9 @@ export class NearClient {
     return this.call("tx", [hash, signerId]);
   }
 
-  async block(blockId: string): Promise<{ header?: { timestamp?: number | string } } | null> {
+  async block(blockId: string): Promise<{ header?: { height?: number | string; timestamp?: number | string } } | null> {
     const result = (await this.call("block", { block_id: blockId })) as {
-      header?: { timestamp?: number | string };
+      header?: { height?: number | string; timestamp?: number | string };
     } | null;
     return result;
   }

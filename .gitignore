@@ -11,6 +11,9 @@ coverage/
 /tmp/
 *.pem
 *.key
+report.json
+report-signing-key.pem
+report-signing-key.pub
 id_rsa
 id_rsa.*
 *.p12

@@ -44,6 +44,19 @@ export interface VerifierMetadata {
   pccsAllowlist: string[];
 }
 
+export interface ReportInputs {
+  contract: string;
+  agent: string | null;
+  txHash: string | null;
+  blockHeight: number | null;
+  /** Where the collateral stored beside the registration came from. */
+  collateralSource: "registration" | "file" | "none";
+  /** When fresh collateral was fetched. Null when that fetch did not happen. */
+  collateralFetchedAt: string | null;
+  /** Pinned PCCS base URL when fresh collateral was fetched. Callers cannot choose this. */
+  freshCollateralSource: string | null;
+}
+
 export interface Report {
   tool: "glassbox";
   version: string;
@@ -53,6 +66,8 @@ export interface Report {
   network: Network | "offline";
   shade: ShadeKind;
   generatedAt: string;
+  /** Facts a signed report repeats: contract, transaction, collateral, tool versions live beside the checks. */
+  inputs: ReportInputs;
   summary: { proven: number; notProven: number; risky: number };
   /** Highest rung present. Counts stay on `summary`; this is not a separate check. */
   overall: Ladder;
@@ -196,6 +211,8 @@ export interface RegistrationEvidence {
   agentId?: string;
   txHash?: string;
   timestampSec?: number;
+  /** Block height of the registration transaction, when the archival block header was read. */
+  blockHeight?: number;
 }
 
 export interface ShadeV2Agent {
@@ -233,6 +250,8 @@ export interface EvidenceBundle {
   mpcFromSnapshot?: boolean;
   freshCollateral?: unknown;
   freshCollateralError?: string;
+  /** ISO time of a successful fresh-collateral fetch. */
+  collateralFetchedAt?: string;
   historySource?: "fastnear" | "nearblocks" | "none" | "file";
   historyError?: string;
   rpcEndpoints: string[];
@@ -280,6 +299,16 @@ export function detectNetwork(accountId: string): Network | null {
   if (id.endsWith(".testnet")) return "testnet";
   if (id.endsWith(".near")) return "mainnet";
   return null;
+}
+
+/**
+ * NEAR account id from the nomicon: 2–64 chars, lowercase.
+ * Implicit accounts (64 hex chars) match. Suffix selects the network separately.
+ */
+const NEAR_ACCOUNT_ID = /^(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/;
+
+export function isNearAccountId(accountId: string): boolean {
+  return accountId.length >= 2 && accountId.length <= 64 && NEAR_ACCOUNT_ID.test(accountId);
 }
 
 function finiteSeconds(value: number): number | undefined {
