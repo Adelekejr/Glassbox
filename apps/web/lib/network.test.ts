@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { classifyWebTarget, isNearAccountId } from "./network.js";
+import { classifyWebTarget, describeInput, isNearAccountId } from "./network.js";
 
 test("web targets are account ids or JSON, never file paths", () => {
   assert.equal(isNearAccountId("ac-sandbox.votron.testnet"), true);
@@ -19,4 +19,12 @@ test("web targets are account ids or JSON, never file paths", () => {
     const result = classifyWebTarget(account);
     assert.equal(result.kind, "account", account);
   }
+});
+
+test("the form hint separates a live account, pasted JSON, and a CLI file", () => {
+  assert.match(describeInput(""), /does not read a local file/);
+  assert.match(describeInput("ac-sandbox.votron.testnet"), /Live account on testnet/);
+  assert.match(describeInput('{"kind":"glassbox-capture"}'), /Pasted JSON/);
+  assert.match(describeInput('{"kind":"glassbox-capture"}'), /not a CLI local file/);
+  assert.doesNotMatch(describeInput("ac-sandbox.votron.testnet"), /CLI local file/);
 });

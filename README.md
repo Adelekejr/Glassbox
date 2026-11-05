@@ -10,7 +10,7 @@ It does not judge whether a payment is correct. That is [Gideon](#gideon), a sep
 
 Glassbox answers one question: what was registered for this agent, and what can change it. It does not watch the guest, and it does not send a transaction.
 
-You can ask in three places. The command line is `glassbox`. An agent tool is MCP `check_agent`. The local web form is the page from `pnpm --filter web dev`. That page also shows a proof strip: a count of known accounts and how their registered configurations landed on the ladder.
+You can ask in three places. The command line is `glassbox`. An agent tool is MCP `check_agent`. The web form is the public demo at https://glassbox-inky.vercel.app, and the same page from `pnpm --filter web dev`. That page also shows a proof strip: a dated saved snapshot of seven accounts and how their registered configurations landed on the ladder.
 
 ```text
 account or file → network from the suffix → register_agent evidence → quote check (dcap-qvl + PCCS allowlist) → compose hygiene → access keys and contract checks → ladder report → optional --sign / verify
@@ -27,7 +27,7 @@ flowchart LR
   G --> H["Optional --sign / verify"]
 ```
 
-1. **Paste an account or a file.** An account id is read from NEAR. A JSON file is read on this computer. The web form does not read local files.
+1. **Paste an account or a file.** A live account id is read from NEAR. JSON pasted on the website is the text in the form. A CLI local file is read on this computer when you pass a path to `glassbox`. The web form does not read local files.
 2. **Network from the suffix.** `.testnet` is testnet. `.near` is mainnet. Anything else is tried on mainnet, then testnet.
 3. **Fetch the registration evidence.** Glassbox looks up `register_agent` (or `register_worker`) and reads the arguments. It does not write to the chain.
 4. **Verify the quote.** `@phala/dcap-qvl` checks the signature. Fresh collateral comes only from the PCCS allowlist. A caller cannot choose that host.
@@ -40,7 +40,7 @@ flowchart LR
 
 ## Do this
 
-- Do install and test — see `pnpm install` then `pnpm test` (Node 20+).
+- Do install and test — see `pnpm install` then `pnpm test` (Node 20 or newer locally; CI runs Node 22).
 - Do audit the captured votron registration on testnet — see `pnpm --filter cli start ac-sandbox.votron.testnet`.
 - Do print the same report as JSON — see `pnpm --filter cli start ac-sandbox.votron.testnet --json`. `--json` stays that report when you also pass `--sign`.
 - Do audit a file offline — see `node packages/cli/bin/glassbox.js packages/core/test/fixtures/votron-registration.json` from the repo root, or pass any registration, app-compose, or deployment JSON. Add `--json` for the machine report.
@@ -50,7 +50,7 @@ flowchart LR
 - Do rebuild the proof strip — see `glassbox index` (local files) or `glassbox index --live` (the known accounts).
 - Do smoke the other public targets — see `pnpm smoke`.
 - Do run the MCP server — see `packages/mcp/README.md`. The tool is `check_agent`.
-- Do open the local web form — see `pnpm --filter web dev`, then http://localhost:3000. It is not deployed.
+- Do open the web form — the public demo is https://glassbox-inky.vercel.app. The same form runs locally with `pnpm --filter web dev`, then http://localhost:3000.
 - Do read how a finding is decided — see `packages/core/src/report.ts`.
 - Do read how chain data is loaded — see `packages/core/src/audit.ts`.
 - Do read the wording rules before editing copy — see `HANDOFF.md`.
@@ -74,9 +74,9 @@ The report also names the highest rung already on the ladder. That line is not a
 
 Every report prints the same threat-model paragraph. A valid Intel TDX quote proves a TDX-attested registered configuration. It does not prove an honest operator. TEE.fail showed that physical access to DDR5 memory can forge TDX quotes, including quotes that carry a dstack context. See https://tee.fail/.
 
-### Saved live index for `ac-sandbox.votron.testnet` (2026-11-05)
+### Saved seven-account snapshot for `ac-sandbox.votron.testnet` (2026-11-05)
 
-`apps/web/data/proof-strip.json` is a live crawl (`source: live`, `generatedAt` `2026-11-05T10:21:06.337Z`). This pass did not re-query NearBlocks, so the counts below are that file, not a new chain read. The 2026-11-04 sample (6 risky, 3 not proven, 9 proven) is older than this index and is not the current strip.
+`apps/web/data/proof-strip.json` is a saved seven-account snapshot (`source: live`, `generatedAt` `2026-11-05T10:21:06.337Z`). This pass did not re-query NearBlocks, so the counts below are that file, not a new chain read. The 2026-11-04 sample (6 risky, 3 not proven, 9 proven) is older than this snapshot and is not the current strip.
 
 For `ac-sandbox.votron.testnet` the row is shade-v1, overall RISKY, **10 risky, 4 not proven, 13 proven**. The strip sentence for all seven accounts is `7 agents scanned · 0 proven · 4 match a vulnerable configuration · 3 not proven`. The zero is accounts whose bucket is proven. It is not a count of proven findings, and it is not a clean result.
 
@@ -90,7 +90,7 @@ Titles on the votron row, copied from that file:
 
 Evidence labels on that row include registration transaction `HczqYXdRBZfyTtnQiPqGRXe3zEhvwHu3hyCUkqMq8VjN`, `/var/run/tappd.sock`, `NEAR_SEED_PHRASE` and `ANTHROPIC_API_KEY` (name only), and advisory IDs INTEL-SA-01192, INTEL-SA-01245, INTEL-SA-01312, INTEL-SA-01313, and INTEL-SA-01367. Values are not in the file. The vulnerable-configuration title is the registered-configuration heuristic. The offline capture of the same registration has no `os-image-hash` event, a `rootfs-hash` event, and `tappd.sock`. That is not an exact dstack version.
 
-The redacted capture `packages/core/test/fixtures/votron-registration.json` is a different report. Audited offline on this checkout with the report clock set to `2026-11-05T12:00:00.000Z`, it printed **8 risky, 10 not proven, 14 proven**. Fresh collateral is not fetched for a file, so `tdx.fresh` stayed NOT PROVEN ("TCB status now was not checked") and `tdx.advisories` stayed PROVEN ("No advisory IDs were returned") on the stored collateral. `tdx.registration` stayed PROVEN (UpToDate). `dstack.range` stayed RISKY (matches a vulnerable configuration). The capture's registration time in that report is 2025-09-27. Do not quote the file counts as the live index.
+The redacted capture `packages/core/test/fixtures/votron-registration.json` is a CLI local file, not the website paste path and not this snapshot. Audited offline on this checkout with the report clock set to `2026-11-05T12:00:00.000Z`, it printed **8 risky, 10 not proven, 14 proven**. Fresh collateral is not fetched for a file, so `tdx.fresh` stayed NOT PROVEN ("TCB status now was not checked") and `tdx.advisories` stayed PROVEN ("No advisory IDs were returned") on the stored collateral. `tdx.registration` stayed PROVEN (UpToDate). `dstack.range` stayed RISKY (matches a vulnerable configuration). The capture's registration time in that report is 2025-09-27. Do not quote the file counts as the live index.
 
 Source for the guest-agent issue: https://phala.com/posts/2026-10-post-mortem-dstack-guest-agent-vulnerability
 
@@ -140,13 +140,13 @@ Publishing `glassbox-mcp` to npm is not part of this submission. Do not publish 
 
 `check_agent` accepts a NEAR account id or JSON text. It refuses a URL, and it refuses a caller-supplied collateral host. A burst of calls in one process is limited to about six a minute. A pasted JSON report says the file supplied the compared values. A verified quote in that file is a check of those bytes, not a fresh chain read.
 
-This pass did not call `check_agent` against the network. The saved live index for `ac-sandbox.votron.testnet` (same file as the sample) is overall RISKY, shade-v1, 10 risky / 4 not proven / 13 proven, and it includes `Powered by Nearblocks.io APIs.` That index is not a new MCP session.
+This pass did not call `check_agent` against the network. The saved seven-account snapshot for `ac-sandbox.votron.testnet` (same file as the sample) is overall RISKY, shade-v1, 10 risky / 4 not proven / 13 proven, and it includes `Powered by Nearblocks.io APIs.` That snapshot is not a new MCP session.
 
 ## Compose check
 
 [![Glassbox check](https://img.shields.io/github/actions/workflow/status/Adelekejr/Glassbox/compose-hygiene.yml?branch=main&label=glassbox%20check)](https://github.com/Adelekejr/Glassbox/actions/workflows/compose-hygiene.yml)
 
-The workflow runs on `main`. There is no hosted report API.
+The workflow runs on `main` with Node 22 and pnpm 10.33.4. Local `engines` allows Node 20 or newer. CI does not run a second Node version. The workflow is a CI gate. The public demo is https://glassbox-inky.vercel.app.
 
 The Action runs `glassbox check fixtures/compose/pinned.json --fail-on risky`. That file is a pinned compose. It does not call a chain. The job fails when the audit has a risky finding. `fixtures/compose/loose.json` is the example that fails the gate (unpinned image, public logs, a socket mount). The same workflow also runs `pnpm test` on pull requests and pushes. That script runs the package tests and `pnpm run typecheck`. The compose gate is unchanged.
 
@@ -156,7 +156,7 @@ node packages/cli/bin/glassbox.js check fixtures/compose/pinned.json --fail-on r
 
 ## Proof strip
 
-The web form shows one line from the saved live index: `7 agents scanned · 0 proven · 4 match a vulnerable configuration · 3 not proven` (`generatedAt` `2026-11-05T10:21:06.337Z`). The zero is accounts in the proven bucket. Not proven is not a clean result. An account that is risky only because of its keys is counted in not proven on that line. The row's own ladder is the full result.
+The web form shows one line from the saved seven-account snapshot, with the date beside the counts: `7 agents scanned · 0 proven · 4 match a vulnerable configuration · 3 not proven` (`generatedAt` `2026-11-05T10:21:06.337Z`). The zero is accounts in the proven bucket. Not proven is not a clean result. An account that is risky only because of its keys is counted in not proven on that line. The row's own ladder is the full result.
 
 Rebuild it from the local fixtures (no NearBlocks calls):
 
@@ -172,7 +172,7 @@ To read the known accounts, which does call NearBlocks and waits between calls (
 node packages/cli/bin/glassbox.js index --live
 ```
 
-That crawl includes the testnet accounts `ac-sandbox.votron.testnet`, `ac-sandbox.ajitesh-1.testnet`, `ac-sandbox.nova-shade-agent.testnet`, `ac-sandbox.leo-leo-leo.testnet`, and `ac-proxy.leo-leo-leo.testnet`, plus the mainnet accounts `reflect-adam-mainnet-agent-contract.near` and `ironshield.near`. It reads `register_agent`, and `register_worker` for a worker proxy. The saved index prints `Powered by Nearblocks.io APIs.` when NearBlocks was used. Secret values are left out. The row shows the configuration class and redacted evidence.
+That crawl is the seven-account snapshot: testnet `ac-sandbox.votron.testnet`, `ac-sandbox.ajitesh-1.testnet`, `ac-sandbox.nova-shade-agent.testnet`, `ac-sandbox.leo-leo-leo.testnet`, and `ac-proxy.leo-leo-leo.testnet`, plus mainnet `reflect-adam-mainnet-agent-contract.near` and `ironshield.near`. It reads `register_agent`, and `register_worker` for a worker proxy. The saved snapshot prints `Powered by Nearblocks.io APIs.` when NearBlocks was used. Secret values are left out. The row shows the configuration class and redacted evidence. `worker.outlayer.testnet` and the MPC allowlist accounts in Public targets are smoke checks. They are not members of this snapshot.
 
 Try the mainnet accounts, then check a signed report. These commands read public data. They do not send a transaction.
 
@@ -184,7 +184,7 @@ node packages/cli/bin/glassbox.js verify report.json
 
 ## Web
 
-Do run the form locally — see `pnpm --filter web dev`. Paste an account (the hint names testnet or mainnet from the suffix) or JSON. The page POSTs to `/api/audit`, which calls the core library and does not read local files. One process accepts 10 audits per rolling minute, then HTTP 429. That cap resets on restart and is not shared across instances. The route stays on localhost until a deliberate deploy. This submission does not deploy it. The top of the page is the proof strip. Styling is plain on purpose.
+The public demo is https://glassbox-inky.vercel.app. The same form runs locally with `pnpm --filter web dev`, then http://localhost:3000. Paste a live account (the hint names testnet or mainnet from the suffix) or JSON text. JSON pasted on the site is the text in the form. A CLI local file is read only when you pass a path to `glassbox`. The page POSTs to `/api/audit`, which calls the core library and does not read local files. When `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are set (or the `KV_REST_API_URL` / `KV_REST_API_TOKEN` pair), the route allows 10 audits per minute and 2 at a time for the whole deployment. When `GLASSBOX_AUDIT_TOKEN` is set and no shared store is configured, callers must send header `x-glassbox-audit-token`. `GLASSBOX_PUBLIC_DEMO=1` keeps anonymous access with a process-local cap of 10 per minute. That cap resets on restart and is not shared across instances. With none of those set, the route returns 403 and does not call RPC. The top of the page is the saved seven-account snapshot. Styling is plain on purpose.
 
 ## Shade v2
 
@@ -201,7 +201,7 @@ Do read the dated approve/remove section — see the "Approval history" block in
 | `packages/core` | Audit library. `pnpm --filter core test` runs the fixture tests. |
 | `packages/cli` | `glassbox <account-or-file>`. `start` is the command above. |
 | `packages/mcp` | `check_agent` over stdio. Bin `glassbox-mcp`. Not published. |
-| `apps/web` | Local form and the proof strip. Not deployed. |
+| `apps/web` | Web form and the proof strip. Public demo: https://glassbox-inky.vercel.app. Local: `pnpm --filter web dev`. |
 | `packages/core/test/fixtures/votron-registration.json` | Redacted capture of the votron `register_agent` arguments. |
 | `packages/core/scripts/smoke.ts` | Live read of the other public targets. |
 
@@ -223,17 +223,22 @@ MPC allowlists: view `allowed_docker_image_hashes` on `v1.signer` (mainnet) and 
 
 ## Public targets exercised
 
-| Account | What it is |
+The seven-account snapshot is the first table. The second table is smoke and MPC targets. Those rows are not members of the snapshot.
+
+| Account | Seven-account snapshot |
 | --- | --- |
 | `ac-sandbox.votron.testnet` | Shade v1, own code. Registration above. |
 | `ac-sandbox.ajitesh-1.testnet` | Shade v1, own code. |
 | `ac-sandbox.nova-shade-agent.testnet` | Global contract `GMXJXnVK9vYd7CSYPtbA56rPau2h5J4YjsSsCfegGi4G`. |
 | `ac-sandbox.leo-leo-leo.testnet` | Global contract `31x2yS1DZHUjMQQFXPBjbfojb4FQ8pBaER39YoReTpJb`. |
 | `ac-proxy.leo-leo-leo.testnet` | Worker proxy, global contract `2pSLLgLnAM9PYD7Rj6SpdK9tJRz48GQ7GrnAXK6tmm8u`. |
+| `reflect-adam-mainnet-agent-contract.near` | Mainnet demo account. `.near` selects mainnet. |
+| `ironshield.near` | Mainnet. Shade v2 interface in the saved snapshot. That row loaded no registration quote (`No registration quote was loaded`) and did not load approved measurements (`Approved measurements were not loaded`). Those checks stay NOT PROVEN. The only PROVEN row on it is the interface itself. Overall RISKY because of a full-access key (1 proven, 6 not proven, 1 risky). |
+
+| Account | Smoke or MPC, not in the snapshot |
+| --- | --- |
 | `worker.outlayer.testnet` | `get_approved_measurements`. Not Shade v2 (`get_contract_info` is absent). RTMR1 `a7b52327…` is in neither Shade table. |
 | `v1.signer-prod.testnet` and `v1.signer` | MPC docker allowlists. Two hashes each; one hash expires 5 Nov 2026 (testnet) and 6 Nov 2026 (mainnet). |
-| `reflect-adam-mainnet-agent-contract.near` | Mainnet demo account. `.near` selects mainnet. |
-| `ironshield.near` | Mainnet. Shade v2 interface in the saved live index. That row loaded no registration quote (`No registration quote was loaded`) and did not load approved measurements (`Approved measurements were not loaded`). Those checks stay NOT PROVEN. The only PROVEN row on it is the interface itself. Overall RISKY because of a full-access key (1 proven, 6 not proven, 1 risky). |
 
 `ironshield.near` is the Shade v2 interface in that index. It is not a verified v2 TEE registration: no quote, and approved measurements were not loaded. The local sandbox test is still the path that approves measurements and compares them. That sandbox uses the all-zero local-mode default, which is not a TDX measurement. The account the notes call "1prime" was not located.
 

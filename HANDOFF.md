@@ -6,7 +6,7 @@ Written 2026-11-04 so another session can continue without re-deriving the rules
 
 - pnpm workspace. `packages/core` is the library. `packages/cli` is `glassbox <account|file>` (`pnpm --filter cli start …`, human text, or `--json`).
 - `packages/mcp` (`glassbox-mcp`) is a stdio MCP server. Tool `check_agent` returns `{ overall, summary, report }`. See `packages/mcp/README.md` for Claude Desktop and Cursor config. It is not published to npm. Do not publish it for this submission. Local install uses `node` and `packages/mcp/bin/glassbox-mcp.js`.
-- `apps/web` is a plain Next.js form. `pnpm --filter web dev`. POST `/api/audit` accepts a NEAR account id or JSON text and does not read local files (`auditTarget` does, so the route must not call it). One process accepts 10 audits per rolling minute, then HTTP 429. That cap is not a deploy control. Keep the route on localhost until a deliberate deploy. Do not deploy in this submission. Restyle is a separate track: leave `components/Ladder.tsx` and `components/AuditForm.tsx` alone here. Next needs `extensionAlias` in `next.config.ts` so core's `.js` imports resolve to `.ts`.
+- `apps/web` is a plain Next.js form. The public demo is https://glassbox-inky.vercel.app. `pnpm --filter web dev` runs the same form locally. POST `/api/audit` accepts a NEAR account id or JSON text and does not read local files (`auditTarget` does, so the route must not call it). Admission is the shared Redis or KV budget (10 per minute, 2 in flight), `GLASSBOX_AUDIT_TOKEN`, or `GLASSBOX_PUBLIC_DEMO=1` for a process-local cap. With none of those set, the route returns 403. Do not remove that gate. Restyle is a separate track. Next needs `extensionAlias` in `next.config.ts` so core's `.js` imports resolve to `.ts`.
 - Shade v2: `get_approved_measurements` rows may be nested `{ rtmrs, key_provider_event_digest, app_compose_hash_payload }`. `get_agents` fills `v2Agents`. A match is PROVEN. All-zero rows are the local-mode default and are RISKY (`measurements.local_default`), not a TDX measurement. `requires_tee: false` is stated in the interface sentence.
 - Local sandbox test: `packages/core/test/shade-v2.sandbox.test.ts` plus `fixtures/shade-contract-template.wasm` (Apache-2.0, framework commit 35758f3). Uses `near-sandbox` 0.3.x (neard 2.13) and `near-api-js`. The test passes `finality: "optimistic"` because a one-node sandbox has not finalized the latest block. Public audits stay on `final`. No testnet transaction.
 - Approval history is an on-demand section, cached in memory for 10 minutes (`GLASSBOX_HISTORY_CACHE_MS`). v1 reads `approve_codehash` and `remove_codehash`. v2 reads `approve_measurements`, `remove_measurements`, `approve_ppids`, `remove_ppids`. Not a watcher. NearBlocks attribution still required.
@@ -72,7 +72,7 @@ pnpm smoke
 
 FastNEAR tx history (`https://tx.test.fastnear.com/v0/account/<id>` and the mainnet twin) was 404 on 2026-11-04. `packages/core/src/near/history.ts` still tries it and falls through. If it starts returning JSON, teach `parseFastnear` with a real payload rather than removing NearBlocks. Keep the attribution whenever NearBlocks is actually called.
 
-Work on `cursor/…` branches off `main`. Keep commits small. MCP `check_agent` and the local web form exist. Do not deploy the web app. Do not publish `glassbox-mcp`. Do not add a payment or send UI (that is Gideon). Do not build a Glassbox contract or a live `--anchor`. The anchor stub stays `skipped`.
+Work on `cursor/…` branches off `main`. Keep commits small. MCP `check_agent` and the web form exist. The public demo is already at https://glassbox-inky.vercel.app. Do not publish `glassbox-mcp`. Do not add a payment or send UI (that is Gideon). Do not build a Glassbox contract or a live `--anchor`. The anchor stub stays `skipped`.
 
 ## Out of this submission
 
@@ -80,7 +80,7 @@ Work on `cursor/…` branches off `main`. Keep commits small. MCP `check_agent` 
 - Do not publish `glassbox-mcp` to npm.
 - Do not add a payment or send UI. Gideon owns that. Public repo: https://github.com/Adelekejr/Gideon-near
 - Do not write that an agent is safe now. A registration is not a live process. NOT PROVEN is not a pass. Valid quote is not an honest operator.
-- Do not deploy `/api/audit`.
+- Do not remove the `/api/audit` admission gate. The public demo is already deployed.
 
 ## Next, when asked
 

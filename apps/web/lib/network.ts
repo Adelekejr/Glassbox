@@ -48,11 +48,13 @@ export function classifyWebTarget(input: string): WebTarget {
 
 export function describeInput(value: string): string {
   const trimmed = value.trim();
-  if (!trimmed) return "Paste an account or JSON.";
+  if (!trimmed) return "Paste a live account id, or JSON text. This page does not read a local file.";
   const classified = classifyWebTarget(trimmed);
-  if (classified.kind === "json") return "Pasted JSON. Chain network is not used.";
+  if (classified.kind === "json") {
+    return "Pasted JSON on this page. The text in the box is compared. This is not a live account, and it is not a CLI local file.";
+  }
   if (classified.kind === "reject") return classified.reason;
   const network = detectNetwork(classified.accountId);
-  if (network) return `Account on ${network}.`;
-  return "Account suffix is not .testnet or .near. Glassbox will try mainnet, then testnet.";
+  if (network) return `Live account on ${network}. This page reads it from NEAR.`;
+  return "Live account. The suffix is not .testnet or .near, so Glassbox tries mainnet, then testnet.";
 }

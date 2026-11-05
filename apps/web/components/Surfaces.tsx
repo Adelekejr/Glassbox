@@ -43,7 +43,7 @@ const SURFACES: Surface[] = [
       { kind: "cmd", text: "pnpm --filter web dev" },
       { kind: "c", text: "# then open http://localhost:3000" },
     ],
-    note: <>This page POSTs to <code>/api/audit</code>, which calls the core library and does not read local files. One process accepts 10 audits per rolling minute, then HTTP 429. That cap is per server process. It resets on restart and is not shared by every visitor.</>,
+    note: <>This page POSTs to <code>/api/audit</code>. An account id is a live NEAR read. JSON pasted here is text in the box, not a CLI local file. The route does not read local files. When a shared Redis or KV budget is set, the deployment allows 10 audits a minute and 2 at a time. A process-local cap of 10 a minute applies only in explicit public-demo mode, and that cap is not shared across instances.</>,
   },
 ];
 

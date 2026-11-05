@@ -25,7 +25,7 @@ export function AccountsTable({ rows }: { rows: IndexRow[] }) {
   const flip = (id: string) => setOpen((o) => ({ ...o, [id]: !o[id] }));
   return (
     <table className="acct-table reveal">
-      <caption className="sr">Accounts in the saved live index. Select a row to see its findings.</caption>
+      <caption className="sr">Accounts in the saved seven-account snapshot. Select a row to see its findings. Smoke and MPC targets are not in this list.</caption>
       <colgroup>
         <col className="w-id" /><col className="w-net" /><col className="w-shade" /><col className="w-overall" /><col className="w-bar" /><col className="w-counts" />
       </colgroup>
