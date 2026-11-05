@@ -1,4 +1,5 @@
-import { isSecretEnvName } from "./evidence/compose.js";
+import { isDebugImage, isSecretEnvName } from "./evidence/compose.js";
+import { DCAP_QVL_VERSION, PINNED_PCCS_URL, verifierMetadata } from "./checks/pccs.js";
 import { isZeroMeasurement, measurementsMatch } from "./evidence/measurements.js";
 import { eventPayload, hasEvent } from "./evidence/registration.js";
 import { assessAccessKeys } from "./checks/access-keys.js";
@@ -61,6 +62,7 @@ export function buildReport(bundle: EvidenceBundle, options?: { now?: Date }): R
   return {
     tool: "glassbox",
     version: GLASSBOX_VERSION,
+    verifier: verifierMetadata(),
     target: bundle.target,
     network: bundle.network,
     shade: bundle.shade,
@@ -88,6 +90,10 @@ export function formatReport(report: Report): string {
   lines.push(`Network:    ${report.network}`);
   lines.push(`Interface:  ${report.shade}`);
   lines.push(`Generated:  ${report.generatedAt}`);
+  lines.push(
+    `Verifier:   ${report.verifier.package} ${report.verifier.version} (QE identity ${report.verifier.qeIdentity}; TCB status ${report.verifier.tcbStatus})`,
+  );
+  lines.push(`PCCS:       ${report.verifier.pccsAllowlist.join(", ")} (caller URLs are not accepted)`);
   lines.push("");
   lines.push(
     `Summary: ${report.summary.risky} risky, ${report.summary.notProven} not proven, ${report.summary.proven} proven.`,
@@ -183,82 +189,14 @@ function attestationFindings(bundle: EvidenceBundle, now: Date): Finding[] {
     : null;
 
   const findings: Finding[] = [];
-  if (!stored) {
-    findings.push(
-      make(
-        "tdx.registration",
-        "NOT_PROVEN",
-        "Stored collateral was not available",
-        false,
-        "The registration quote was loaded without the collateral stored beside it, so the signature and TCB status at registration were not checked.",
-        txEvidence(bundle),
-      ),
-    );
-  } else if (!stored.ok || !stored.status) {
-    findings.push(
-      make(
-        "tdx.registration",
-        "NOT_PROVEN",
-        "Registration quote did not verify",
-        false,
-        `The quote submitted with the registration did not verify against the stored collateral. ${stored.error ?? "No status was returned."}`,
-        txEvidence(bundle),
-      ),
-    );
-  } else {
-    const judged = judgeTcb(stored.status, stored.advisoryIds, when);
-    findings.push(
-      make(
-        "tdx.registration",
-        judged.ladder,
-        judged.ladder === "PROVEN" ? "Registration quote verifies" : `Registration TCB status is ${stored.status}`,
-        false,
-        judged.text,
-        [...txEvidence(bundle), ...advisoryEvidence(stored.advisoryIds)],
-      ),
-    );
-  }
-
-  if (bundle.freshCollateral) {
-    const fresh = verifyQuoteAt(registration.quoteHex, bundle.freshCollateral, Math.floor(now.getTime() / 1000));
-    if (!fresh.ok || !fresh.status) {
-      findings.push(
-        make(
-          "tdx.fresh",
-          "NOT_PROVEN",
-          "Fresh collateral check did not finish",
-          false,
-          `A fresh collateral bundle was fetched, and the quote did not verify against it. ${fresh.error ?? ""}`.trim(),
-          [{ label: "Phala PCCS", url: "https://pccs.phala.network" }],
-        ),
-      );
-    } else {
-      const judged = judgeTcb(fresh.status, fresh.advisoryIds, "against fresh collateral");
-      findings.push(
-        make(
-          "tdx.fresh",
-          judged.ladder,
-          judged.ladder === "PROVEN" ? "Fresh collateral still says UpToDate" : `Fresh collateral TCB status is ${fresh.status}`,
-          false,
-          `${judged.text} This is the registered quote checked again, not a new quote from a live guest.`,
-          [...advisoryEvidence(fresh.advisoryIds), { label: "Phala PCCS", url: "https://pccs.phala.network" }],
-        ),
-      );
-    }
-  } else {
-    findings.push(
-      make(
-        "tdx.fresh",
-        "NOT_PROVEN",
-        "Fresh collateral was not checked",
-        false,
-        bundle.freshCollateralError
-          ? `Fresh collateral was not fetched (${bundle.freshCollateralError}), so the TCB status against today's collateral was not checked.`
-          : "Fresh collateral was not attached, so the TCB status against today's collateral was not checked.",
-        [{ label: "Phala PCCS", url: "https://pccs.phala.network" }],
-      ),
-    );
-  }
+  const fresh = bundle.freshCollateral
+    ? verifyQuoteAt(registration.quoteHex, bundle.freshCollateral, Math.floor(now.getTime() / 1000))
+    : null;
+  findings.push(signatureFinding(bundle, stored));
+  findings.push(qeIdentityFinding(bundle, stored));
+  findings.push(registrationTcbFinding(bundle, stored, when));
+  findings.push(freshTcbFinding(bundle, fresh));
+  findings.push(advisoryFinding(bundle, stored, fresh));
 
   // Parsed quote fields are not evidence until QuoteVerifier accepts the signature.
   // A crafted quote can parse and still fail verification.
@@ -696,7 +634,13 @@ function composeFindings(bundle: EvidenceBundle, now: Date): Finding[] {
   if (!compose) return findings;
   findings.push(imageFinding(compose));
   findings.push(logsFinding(compose));
+  findings.push(sysinfoFinding(compose));
   findings.push(secretFinding(compose));
+  findings.push(plaintextFinding(compose));
+  findings.push(socketFinding(compose));
+  findings.push(kmsFinding(compose));
+  findings.push(allowedEnvsFinding(compose));
+  findings.push(debugImageFinding(compose));
   return findings;
 }
 
@@ -721,6 +665,16 @@ function dstackFinding(assessment: ReturnType<typeof assessDstack>): Finding {
       [{ label: "Phala post-mortem", url: PHALA_POSTMORTEM_URL }],
     );
   }
+  if (assessment.kind === "declared-fixed") {
+    return make(
+      "dstack.range",
+      "NOT_PROVEN",
+      `Declared dstack_version ${assessment.label} was not compared to an os_image_hash`,
+      true,
+      assessment.detail,
+      [{ label: "Fixed image list", detail: "A declared version is not a proven fixed image" }],
+    );
+  }
   if (assessment.kind === "unknown") {
     return make("dstack.range", "NOT_PROVEN", "dstack release was not proven", false, assessment.detail, [
       { label: "Phala post-mortem", url: PHALA_POSTMORTEM_URL },
@@ -742,6 +696,16 @@ function upgradeFinding(bundle: EvidenceBundle, assessment: ReturnType<typeof as
     return make("dstack.upgrade", "PROVEN", "20 Nov 2026 auto-upgrade does not apply to this fixed image", false, text, [
       { label: "Phala post-mortem", url: PHALA_POSTMORTEM_URL },
     ]);
+  }
+  if (assessment.kind === "declared-fixed") {
+    return make(
+      "dstack.upgrade",
+      "NOT_PROVEN",
+      "20 Nov 2026 schedule was not cleared by a declared version",
+      true,
+      text,
+      [{ label: "Phala post-mortem", url: PHALA_POSTMORTEM_URL }],
+    );
   }
   if (assessment.kind === "unknown") {
     return make("dstack.upgrade", "NOT_PROVEN", "20 Nov 2026 schedule could not be applied", false, text, [
@@ -792,6 +756,7 @@ function imageFinding(compose: NonNullable<EvidenceBundle["compose"]>): Finding 
     "Registered configuration has an unpinned image",
     false,
     `An image that is not pinned by digest can move without a new registration. ${described}.`,
+    loose.map((image) => ({ label: image.ref, detail: "not pinned by sha256" })),
   );
 }
 
@@ -803,6 +768,7 @@ function logsFinding(compose: NonNullable<EvidenceBundle["compose"]>): Finding {
       "public_logs is true in the registered configuration",
       false,
       "The registered app compose sets public_logs to true. Phala's console template used to default this on. Treat logs from that configuration as public.",
+      [{ label: "app_compose.public_logs", detail: "true" }],
     );
   }
   if (compose.publicLogs === false) {
@@ -823,15 +789,48 @@ function logsFinding(compose: NonNullable<EvidenceBundle["compose"]>): Finding {
   );
 }
 
+function sysinfoFinding(compose: NonNullable<EvidenceBundle["compose"]>): Finding {
+  if (compose.publicSysinfo === true) {
+    return make(
+      "dstack.public_sysinfo",
+      "RISKY",
+      "public_sysinfo is true in the registered configuration",
+      false,
+      "The registered app compose sets public_sysinfo to true. System information from that configuration is public.",
+      [{ label: "app_compose.public_sysinfo", detail: "true" }],
+    );
+  }
+  if (compose.publicSysinfo === false) {
+    return make(
+      "dstack.public_sysinfo",
+      "PROVEN",
+      "public_sysinfo is false in the registered configuration",
+      false,
+      "The registered app compose sets public_sysinfo to false.",
+      [{ label: "app_compose.public_sysinfo", detail: "false" }],
+    );
+  }
+  return make(
+    "dstack.public_sysinfo",
+    "NOT_PROVEN",
+    "public_sysinfo was not in the registered configuration",
+    false,
+    "The configuration that was read has no public_sysinfo field.",
+    [{ label: "app_compose.public_sysinfo", detail: "absent" }],
+  );
+}
+
 function secretFinding(compose: NonNullable<EvidenceBundle["compose"]>): Finding {
-  const names = compose.envNames.filter(isSecretEnvName);
+  const names = [
+    ...new Set([...compose.envNames.filter(isSecretEnvName), ...compose.secrets.map((hit) => hit.name)]),
+  ];
   if (names.length === 0) {
     return make(
       "dstack.secret_env",
       "PROVEN",
       "No secret-looking env names in the registered configuration",
       false,
-      "Env names were checked for PRIVATE_KEY, SEED, API_KEY, SECRET, PASSWORD, TOKEN, and MNEMONIC. None matched. Values are not printed.",
+      "Env names were checked for PRIVATE_KEY, SEED, API_KEY, ACCESS_KEY, SECRET, PASSWORD, TOKEN, and MNEMONIC. None matched. Values are not printed.",
     );
   }
   return make(
@@ -840,7 +839,156 @@ function secretFinding(compose: NonNullable<EvidenceBundle["compose"]>): Finding
     "Registered configuration names secret-looking env vars",
     false,
     `These env names match a secret-looking pattern: ${names.join(", ")}. Glassbox reports the names only. A name in the registered configuration is not proof of the value, and the value is not shown.`,
-    names.map((name) => ({ label: name })),
+    names.map((name) => ({ label: name, detail: "name only" })),
+  );
+}
+
+function plaintextFinding(compose: NonNullable<EvidenceBundle["compose"]>): Finding {
+  const hits = compose.secrets.filter((hit) => hit.kind === "plaintext" && hit.hashPrefix);
+  if (hits.length === 0) {
+    return make(
+      "compose.plaintext_secrets",
+      "PROVEN",
+      "No plaintext secret values in the registered configuration",
+      false,
+      "Secret-looking entries were checked for literal values. A ${NAME} reference, a $VAR reference, or a name with no value is not plaintext. No literal value is copied into this report.",
+    );
+  }
+  const described = hits.map((hit) => `${hit.name} at ${hit.path} (sha256 ${hit.hashPrefix})`).join("; ");
+  return make(
+    "compose.plaintext_secrets",
+    "RISKY",
+    "Registered configuration has plaintext secret values",
+    false,
+    `Plaintext secret-looking values are in the registered configuration. Glassbox shows the key name and the first 4 hex characters of sha256(value) only. ${described}.`,
+    hits.map((hit) => ({ label: hit.name, detail: `${hit.path} sha256 ${hit.hashPrefix}` })),
+  );
+}
+
+function socketFinding(compose: NonNullable<EvidenceBundle["compose"]>): Finding {
+  if (compose.socketMounts.length === 0) {
+    return make(
+      "compose.sockets",
+      "PROVEN",
+      "No docker or guest-agent socket is mounted into an app",
+      false,
+      "Volume and device entries were checked for docker.sock, tappd.sock, and dstack.sock. None of those sockets are mounted into an app container in the registered configuration.",
+    );
+  }
+  return make(
+    "compose.sockets",
+    "RISKY",
+    "A docker or guest-agent socket is mounted into an app",
+    false,
+    `The registered configuration mounts a socket into an app container: ${compose.socketMounts.join("; ")}. A mounted docker.sock or guest-agent socket matches a vulnerable configuration.`,
+    compose.socketMounts.map((mount) => ({ label: mount })),
+  );
+}
+
+function kmsFinding(compose: NonNullable<EvidenceBundle["compose"]>): Finding {
+  if (compose.kmsEnabled === false) {
+    return make(
+      "compose.kms",
+      "RISKY",
+      "kms_enabled is false in the registered configuration",
+      false,
+      "kms_enabled is false. Env in that registered configuration is not covered by the KMS.",
+      [{ label: "app_compose.kms_enabled", detail: "false" }],
+    );
+  }
+  if (!compose.hasEncryptedEnv) {
+    const kms = compose.kmsEnabled === true ? "kms_enabled is true, and the" : "The";
+    return make(
+      "compose.kms",
+      "RISKY",
+      "Registered configuration has no encrypted env",
+      false,
+      `${kms} registered configuration has no encrypted env field. A ${"${NAME}"} reference is not ciphertext, and this check does not print env values.`,
+      [
+        { label: "app_compose.kms_enabled", detail: compose.kmsEnabled === null ? "absent" : String(compose.kmsEnabled) },
+        { label: "app_compose.encrypted_env", detail: "absent" },
+      ],
+    );
+  }
+  return make(
+    "compose.kms",
+    "PROVEN",
+    "kms_enabled is not false and an encrypted env field is present",
+    false,
+    "The registered configuration has an encrypted env field, and kms_enabled is not false. The ciphertext is not printed.",
+    [
+      { label: "app_compose.kms_enabled", detail: compose.kmsEnabled === null ? "absent" : "true" },
+      { label: "app_compose.encrypted_env", detail: "present" },
+    ],
+  );
+}
+
+function allowedEnvsFinding(compose: NonNullable<EvidenceBundle["compose"]>): Finding {
+  const list = compose.allowedEnvs;
+  if (!list) {
+    return make(
+      "compose.allowed_envs",
+      "NOT_PROVEN",
+      "allowed_envs was not in the registered configuration",
+      false,
+      "The configuration that was read has no allowed_envs field, so this check cannot say whether host env injection is narrow.",
+      [{ label: "app_compose.allowed_envs", detail: "absent" }],
+    );
+  }
+  const broad = list.filter((entry) => entry.includes("*") || entry.trim() === "");
+  const secretNames = list.filter((entry) => isSecretEnvName(entry));
+  if (broad.length > 0 || secretNames.length > 0) {
+    const reasons = [
+      broad.length > 0 ? `wildcard or empty patterns: ${broad.join(", ") || "(empty)"}` : "",
+      secretNames.length > 0 ? `secret-looking names the host may supply: ${secretNames.join(", ")}` : "",
+    ].filter(Boolean);
+    return make(
+      "compose.allowed_envs",
+      "RISKY",
+      "allowed_envs is overly broad in the registered configuration",
+      false,
+      `allowed_envs matches an overly broad pattern (${reasons.join("; ")}). Names are shown. Values are not.`,
+      [{ label: "app_compose.allowed_envs", detail: list.join(", ") }],
+    );
+  }
+  return make(
+    "compose.allowed_envs",
+    "PROVEN",
+    "allowed_envs lists specific names and no wildcard",
+    false,
+    `allowed_envs has ${list.length} entr${list.length === 1 ? "y" : "ies"} and no wildcard. None of the names match a secret-looking pattern.`,
+    [{ label: "app_compose.allowed_envs", detail: list.join(", ") || "(empty)" }],
+  );
+}
+
+function debugImageFinding(compose: NonNullable<EvidenceBundle["compose"]>): Finding {
+  const debug = compose.images.filter(isDebugImage);
+  if (compose.images.length === 0) {
+    return make(
+      "compose.debug_images",
+      "NOT_PROVEN",
+      "No container images were listed for a debug-image check",
+      false,
+      "The registered configuration did not include an image line to check for a debug or dev tag.",
+    );
+  }
+  if (debug.length === 0) {
+    return make(
+      "compose.debug_images",
+      "PROVEN",
+      "Registered images are not debug or dev images",
+      false,
+      "Image names and tags were checked for debug, dbg, and dev. None matched.",
+      compose.images.map((image) => ({ label: image.ref })),
+    );
+  }
+  return make(
+    "compose.debug_images",
+    "RISKY",
+    "Registered configuration uses a debug or dev image",
+    false,
+    `A debug or dev image matches a vulnerable configuration: ${debug.map((image) => image.ref).join("; ")}.`,
+    debug.map((image) => ({ label: image.ref, detail: image.tag ?? "name" })),
   );
 }
 
@@ -969,18 +1117,195 @@ function runtimeFinding(): Finding {
   );
 }
 
-function judgeTcb(status: string, advisories: string[], when: string): { ladder: Ladder; text: string } {
-  if (status === "UpToDate") {
-    return {
-      ladder: "PROVEN",
-      text: `The registration quote verifies. TCB status ${when} is UpToDate.${advisories.length ? ` Advisory IDs: ${advisories.join(", ")}.` : ""}`,
-    };
+function signatureFinding(bundle: EvidenceBundle, stored: ReturnType<typeof verifyQuoteAt> | null): Finding {
+  const version = verifierMetadata().version;
+  if (!stored) {
+    return make(
+      "tdx.signature",
+      "NOT_PROVEN",
+      "Quote signature was not checked",
+      false,
+      "The registration quote was loaded without the collateral stored beside it, so the quote signature was not checked.",
+      txEvidence(bundle),
+    );
   }
-  const extra = advisories.length ? ` Advisory IDs: ${advisories.join(", ")}.` : "";
-  return {
-    ladder: "RISKY",
-    text: `The registration quote verifies, and the TCB status ${when} is ${status}.${extra}`,
-  };
+  if (!stored.ok) {
+    return make(
+      "tdx.signature",
+      "NOT_PROVEN",
+      "Quote signature did not verify",
+      false,
+      `The quote signature did not verify against the stored collateral with @phala/dcap-qvl ${version}. ${clip(stored.error ?? "No status was returned.")}`,
+      txEvidence(bundle),
+    );
+  }
+  return make(
+    "tdx.signature",
+    "PROVEN",
+    "Quote signature verified",
+    false,
+    `The quote signature verified with @phala/dcap-qvl ${version} against the collateral stored with the registration.`,
+    txEvidence(bundle),
+  );
+}
+
+function qeIdentityFinding(bundle: EvidenceBundle, stored: ReturnType<typeof verifyQuoteAt> | null): Finding {
+  const meta = verifierMetadata();
+  if (meta.version !== DCAP_QVL_VERSION || meta.qeIdentity !== "mandatory") {
+    return make(
+      "tdx.qe_identity",
+      "RISKY",
+      "QE identity is not mandatory in this verifier",
+      false,
+      `Installed @phala/dcap-qvl ${meta.version} is older than 0.3.9. QE identity verification is not mandatory in that build (GHSA-796p-j2gh-9m2q).`,
+      txEvidence(bundle),
+    );
+  }
+  if (!stored) {
+    return make(
+      "tdx.qe_identity",
+      "NOT_PROVEN",
+      "QE identity was not checked",
+      false,
+      `QE identity verification is mandatory in @phala/dcap-qvl ${meta.version}, and the stored collateral was not available to run it.`,
+      txEvidence(bundle),
+    );
+  }
+  if (!stored.ok) {
+    const qeError = stored.error && /qe[_\s-]?identity|qe mrsigner|qe isvprodid|qe isvsvn|unsupported qe/i.test(stored.error);
+    return make(
+      "tdx.qe_identity",
+      qeError ? "RISKY" : "NOT_PROVEN",
+      qeError ? "QE identity did not match the quote" : "QE identity was not accepted",
+      false,
+      qeError
+        ? `QE identity is mandatory in @phala/dcap-qvl ${meta.version}, and this quote did not satisfy it. ${clip(stored.error ?? "")}`
+        : `QE identity is mandatory in @phala/dcap-qvl ${meta.version} (the check has been part of verification since 0.3.9, GHSA-796p-j2gh-9m2q). Verification did not complete, so QE identity was not accepted. ${clip(stored.error ?? "")}`,
+      txEvidence(bundle),
+    );
+  }
+  return make(
+    "tdx.qe_identity",
+    "PROVEN",
+    "QE identity verified",
+    false,
+    `QE identity is mandatory in @phala/dcap-qvl ${meta.version} (GHSA-796p-j2gh-9m2q, fixed in 0.3.9). This quote verified, so the QE identity signature, issuer chain, and MRSIGNER, ISVPRODID, and ISVSVN policy were checked. The check is not optional.`,
+    txEvidence(bundle),
+  );
+}
+
+function registrationTcbFinding(
+  bundle: EvidenceBundle,
+  stored: ReturnType<typeof verifyQuoteAt> | null,
+  when: string,
+): Finding {
+  if (!stored) {
+    return make(
+      "tdx.registration",
+      "NOT_PROVEN",
+      "TCB status at registration was not checked",
+      false,
+      "The registration quote was loaded without the collateral stored beside it, so the TCB status at registration was not checked. TCB status is a verdict in this report. It is not informational.",
+      txEvidence(bundle),
+    );
+  }
+  if (!stored.ok || !stored.status) {
+    return make(
+      "tdx.registration",
+      "NOT_PROVEN",
+      "TCB status at registration was not accepted",
+      false,
+      `The quote did not verify against the stored collateral, so the TCB status at registration was not accepted. ${clip(stored.error ?? "No status was returned.")} TCB status is a verdict in this report. It is not informational.`,
+      txEvidence(bundle),
+    );
+  }
+  const proven = stored.status === "UpToDate";
+  return make(
+    "tdx.registration",
+    proven ? "PROVEN" : "RISKY",
+    proven ? "TCB status at registration is UpToDate" : `TCB status at registration is ${stored.status}`,
+    false,
+    `The registered configuration's TCB status ${when} is ${stored.status}. TCB status is a verdict in this report. It is not informational.`,
+    txEvidence(bundle),
+  );
+}
+
+function freshTcbFinding(bundle: EvidenceBundle, fresh: ReturnType<typeof verifyQuoteAt> | null): Finding {
+  const evidence: EvidenceLink[] = [{ label: "Phala PCCS", url: PINNED_PCCS_URL, detail: "allowlisted; caller URLs are not accepted" }];
+  if (bundle.freshCollateral) {
+    if (!fresh?.ok || !fresh.status) {
+      return make(
+        "tdx.fresh",
+        "NOT_PROVEN",
+        "TCB status now was not accepted",
+        false,
+        `A fresh collateral bundle was fetched from the allowlisted PCCS, and the quote did not verify against it. ${clip(fresh?.error ?? "")}`.trim(),
+        evidence,
+      );
+    }
+    const proven = fresh.status === "UpToDate";
+    return make(
+      "tdx.fresh",
+      proven ? "PROVEN" : "RISKY",
+      proven ? "Registered configuration's TCB is now UpToDate" : `Registered configuration's TCB is now ${fresh.status}`,
+      false,
+      `The registered configuration's TCB is now ${fresh.status}. This is the same registered quote checked against fresh collateral from the allowlisted PCCS. It is not a new quote from a live guest. TCB status is a verdict in this report. It is not informational.`,
+      evidence,
+    );
+  }
+  return make(
+    "tdx.fresh",
+    "NOT_PROVEN",
+    "TCB status now was not checked",
+    false,
+    bundle.freshCollateralError
+      ? `Fresh collateral was not fetched (${bundle.freshCollateralError}), so the registered configuration's TCB status now was not checked.`
+      : "Fresh collateral was not attached, so the registered configuration's TCB status now was not checked.",
+    evidence,
+  );
+}
+
+function advisoryFinding(
+  bundle: EvidenceBundle,
+  stored: ReturnType<typeof verifyQuoteAt> | null,
+  fresh: ReturnType<typeof verifyQuoteAt> | null,
+): Finding {
+  const ids = [
+    ...new Set([...(stored?.ok ? stored.advisoryIds : []), ...(fresh?.ok ? fresh.advisoryIds : [])]),
+  ];
+  if (!stored?.ok && !fresh?.ok) {
+    return make(
+      "tdx.advisories",
+      "NOT_PROVEN",
+      "Advisory IDs were not read",
+      false,
+      "Advisory IDs were not read because the quote did not verify against the collateral that was available.",
+      txEvidence(bundle),
+    );
+  }
+  if (ids.length === 0) {
+    return make(
+      "tdx.advisories",
+      "PROVEN",
+      "No advisory IDs were returned",
+      false,
+      "No advisory IDs were returned for the TCB levels that verified.",
+      txEvidence(bundle),
+    );
+  }
+  return make(
+    "tdx.advisories",
+    "RISKY",
+    "Advisory IDs are attached to the registered configuration",
+    false,
+    `Advisory IDs on the registered configuration: ${ids.join(", ")}. These are Intel's identifiers for the matched TCB level.`,
+    [...advisoryEvidence(ids), ...txEvidence(bundle)],
+  );
+}
+
+function clip(value: string): string {
+  const cleaned = value.replace(/[\u0000-\u001f\u007f]/g, " ").trim();
+  return cleaned.length > 300 ? `${cleaned.slice(0, 300)}…` : cleaned;
 }
 
 function advisoryEvidence(ids: string[]): EvidenceLink[] {
@@ -1014,7 +1339,10 @@ function codeEvidence(bundle: EvidenceBundle): EvidenceLink[] {
 }
 
 function sourceLines(bundle: EvidenceBundle): string[] {
-  const lines = ["@phala/dcap-qvl 0.7.1 (Apache-2.0) for TDX quote verification."];
+  const meta = verifierMetadata();
+  const lines = [
+    `@phala/dcap-qvl ${meta.version} (Apache-2.0) for TDX quote verification. QE identity is ${meta.qeIdentity}. TCB status is ${meta.tcbStatus}. PCCS allowlist: ${meta.pccsAllowlist.join(", ")}.`,
+  ];
   if (bundle.rpcEndpoints.length > 0) lines.push(`NEAR RPC: ${[...new Set(bundle.rpcEndpoints)].join(", ")}`);
   if (bundle.historySource === "nearblocks") lines.push("Transaction history: NearBlocks API.");
   if (bundle.historySource === "fastnear") lines.push("Transaction history: FastNEAR tx API.");

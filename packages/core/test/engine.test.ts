@@ -5,6 +5,8 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { assessAccessKeys } from "../src/checks/access-keys.js";
 import { assessDstack, versionInVulnerableRange } from "../src/checks/dstack.js";
+import { DCAP_QVL_VERSION, collateralUrlAllowed } from "../src/checks/pccs.js";
+import { fetchFreshCollateral, proveCollateralFetchGuard } from "../src/checks/tdx.js";
 import { formatExpiry } from "../src/checks/mpc.js";
 import { replayRtmr } from "../src/checks/rtmr.js";
 import { hardwareAndOSMeasurements } from "../src/data/shade-measurements.js";
@@ -44,10 +46,20 @@ test("votron registration report uses the real quote and stays inside the wordin
   assert.match(text, /matches a vulnerable configuration/);
   assert.equal(report.shade, "shade-v1");
   const byId = Object.fromEntries(report.findings.map((finding) => [finding.id, finding]));
+  assert.equal(byId["tdx.signature"].ladder, "PROVEN");
+  assert.equal(byId["tdx.qe_identity"].ladder, "PROVEN");
+  assert.match(byId["tdx.qe_identity"].plainEnglish, /mandatory/i);
   assert.equal(byId["tdx.registration"].ladder, "PROVEN");
   assert.match(byId["tdx.registration"].plainEnglish, /UpToDate/);
+  assert.match(byId["tdx.registration"].plainEnglish, /registered configuration/i);
   assert.equal(byId["tdx.fresh"].ladder, "NOT_PROVEN");
   assert.equal(byId["tdx.debug"].ladder, "PROVEN");
+  assert.ok(byId["tdx.advisories"]);
+  assert.equal(report.verifier.package, "@phala/dcap-qvl");
+  assert.equal(report.verifier.version, DCAP_QVL_VERSION);
+  assert.equal(report.verifier.qeIdentity, "mandatory");
+  assert.equal(report.verifier.tcbStatus, "enforced");
+  assert.ok(report.verifier.pccsAllowlist.includes("https://pccs.phala.network"));
   assert.equal(byId["tdx.report_data"].ladder, "PROVEN");
   assert.match(byId["tdx.report_data"].plainEnglish, new RegExp(fixture.agentId));
   assert.equal(byId["measurements.quote_match"].ladder, "PROVEN");
@@ -63,7 +75,16 @@ test("votron registration report uses the real quote and stays inside the wordin
   assert.match(byId["dstack.upgrade"].plainEnglish, /0\.3\.x/);
   assert.equal(byId["images.pin"].ladder, "PROVEN");
   assert.equal(byId["dstack.public_logs"].ladder, "RISKY");
+  assert.equal(byId["dstack.public_sysinfo"].ladder, "RISKY");
+  assert.match(byId["dstack.public_sysinfo"].evidence.map((item) => item.label).join(" "), /public_sysinfo/);
   assert.equal(byId["dstack.secret_env"].ladder, "RISKY");
+  assert.equal(byId["compose.plaintext_secrets"].ladder, "PROVEN");
+  assert.equal(byId["compose.sockets"].ladder, "RISKY");
+  assert.match(byId["compose.sockets"].plainEnglish, /\/var\/run\/tappd\.sock/);
+  assert.equal(byId["compose.kms"].ladder, "RISKY");
+  assert.match(byId["compose.kms"].plainEnglish, /no encrypted env/i);
+  assert.equal(byId["compose.allowed_envs"].ladder, "NOT_PROVEN");
+  assert.equal(byId["compose.debug_images"].ladder, "PROVEN");
   assert.match(byId["dstack.secret_env"].plainEnglish, /NEAR_SEED_PHRASE/);
   assert.match(byId["dstack.secret_env"].plainEnglish, /ANTHROPIC_API_KEY/);
   assert.equal(byId["access.keys"].ladder, "RISKY");
@@ -271,6 +292,7 @@ test("image pins, secret names, and access keys", () => {
   assert.equal(isSecretEnvName("ANTHROPIC_API_KEY"), true);
   assert.equal(isSecretEnvName("SPONSOR_PRIVATE_KEY"), true);
   assert.equal(isSecretEnvName("API_CODEHASH"), false);
+  assert.equal(isSecretEnvName("AWS_ACCESS_KEY_ID"), true);
   assert.equal(isSecretEnvName("PUBLIC_LOGGER"), false);
   const unlimited = assessAccessKeys([
     {
@@ -302,7 +324,10 @@ test("a quote that does not verify is not marked proven", async () => {
   copy.collateral = { not: "collateral" };
   const report = await auditValue(copy, { now: FROZEN, label: "bad-collateral" });
   const byId = Object.fromEntries(report.findings.map((finding) => [finding.id, finding]));
+  assert.equal(byId["tdx.signature"].ladder, "NOT_PROVEN");
+  assert.equal(byId["tdx.qe_identity"].ladder, "NOT_PROVEN");
   assert.equal(byId["tdx.registration"].ladder, "NOT_PROVEN");
+  assert.equal(byId["tdx.advisories"].ladder, "NOT_PROVEN");
   assert.equal(byId["tdx.debug"].ladder, "NOT_PROVEN");
   assert.equal(byId["tdx.report_data"].ladder, "NOT_PROVEN");
   assert.equal(byId["measurements.quote_match"].ladder, "NOT_PROVEN");
@@ -334,4 +359,132 @@ test("evidence links keep their host when the id contains URL characters", () =>
   const account = new URL(accountUrl("testnet", "acct.testnet/../../evil.example"));
   assert.equal(account.host, "testnet.nearblocks.io");
   assert.match(account.pathname, /%2F/);
+});
+
+test("a declared fixed version is not proven without an os_image_hash", async () => {
+  const declared = await auditValue(
+    { tee_config: { dstack_version: "0.6.1", public_logs: false } },
+    { now: FROZEN },
+  );
+  const finding = declared.findings.find((item) => item.id === "dstack.range");
+  assert.equal(finding?.ladder, "NOT_PROVEN");
+  assert.equal(finding?.inference, true);
+  assert.doesNotMatch(finding?.title ?? "", /is a fixed image/);
+  assert.match(finding?.plainEnglish ?? "", /os_image_hash/);
+  const upgrade = declared.findings.find((item) => item.id === "dstack.upgrade");
+  assert.equal(upgrade?.ladder, "NOT_PROVEN");
+
+  const mismatched = await auditValue(
+    {
+      tcb_info: {
+        os_image_hash: "ab".repeat(32),
+        event_log: [],
+        app_compose: JSON.stringify({ dstack_version: "0.6.1" }),
+      },
+    },
+    { now: FROZEN },
+  );
+  const hashed = mismatched.findings.find((item) => item.id === "dstack.range");
+  assert.equal(hashed?.ladder, "RISKY");
+  assert.match(hashed?.title ?? "", /not a known fixed image/);
+  assert.match(hashed?.plainEnglish ?? "", /0\.6\.1/);
+  assert.match(hashed?.plainEnglish ?? "", /not used in place of the os_image_hash/);
+
+  const matched = assessDstack({
+    osImageHash: "ec43cb8c5e04b6bb6c53b33b16076a01d83d01f7f4b703f2f78a0d947d6247e6",
+    compose: {
+      publicLogs: null,
+      publicSysinfo: null,
+      kmsEnabled: null,
+      hasEncryptedEnv: false,
+      allowedEnvs: null,
+      dstackVersion: "0.5.8",
+      versionDeclared: true,
+      envNames: [],
+      secrets: [],
+      images: [],
+      socketMounts: [],
+      referencesTappdSocket: false,
+      hasDockerCompose: false,
+    },
+    hasOsImageHashEvent: true,
+    hasRootfsHashEvent: false,
+  });
+  assert.equal(matched.kind, "fixed");
+  assert.match(matched.detail, /os_image_hash matches/);
+});
+
+test("compose hygiene flags plaintext secrets without copying the value", async () => {
+  const canary = "sk-ant-not-a-real-secret-value";
+  const report = await auditValue(
+    {
+      kms_enabled: false,
+      public_sysinfo: true,
+      allowed_envs: ["*", "NEAR_SEED_PHRASE"],
+      pre_launch_script: "export AWS_ACCESS_KEY_ID=AKIAFAKEKEY123456\nexport OTHER=$DSTACK_OTHER\n",
+      docker_compose_file: [
+        "services:",
+        "  app:",
+        "    image: example/app:debug",
+        "    environment:",
+        `      ANTHROPIC_API_KEY: ${canary}`,
+        "      NEAR_SEED_PHRASE: ${NEAR_SEED_PHRASE}",
+        "    volumes:",
+        "      - /var/run/docker.sock:/var/run/docker.sock",
+        "      - /var/run/tappd.sock:/var/run/tappd.sock",
+      ].join("\n"),
+    },
+    { now: FROZEN },
+  );
+  const text = `${formatReport(report)}\n${JSON.stringify(report)}`;
+  assert.doesNotMatch(text, /hacked/i);
+  assert.doesNotMatch(text, /currently running/i);
+  assert.doesNotMatch(text, /compromised/i);
+  assert.doesNotMatch(text, /pwned/i);
+  assert.equal(text.includes(canary), false);
+  assert.equal(text.includes("AKIAFAKEKEY123456"), false);
+  const byId = Object.fromEntries(report.findings.map((finding) => [finding.id, finding]));
+  assert.equal(byId["compose.plaintext_secrets"].ladder, "RISKY");
+  assert.match(byId["compose.plaintext_secrets"].plainEnglish, /ANTHROPIC_API_KEY/);
+  assert.match(byId["compose.plaintext_secrets"].plainEnglish, /AWS_ACCESS_KEY_ID/);
+  assert.match(byId["compose.plaintext_secrets"].plainEnglish, new RegExp(sha256Hex(canary).slice(0, 4)));
+  assert.match(byId["compose.plaintext_secrets"].evidence.map((item) => item.detail ?? "").join(" "), /pre_launch_script|docker_compose_file/);
+  assert.equal(byId["dstack.public_sysinfo"].ladder, "RISKY");
+  assert.equal(byId["images.pin"].ladder, "RISKY");
+  assert.equal(byId["compose.sockets"].ladder, "RISKY");
+  assert.match(byId["compose.sockets"].plainEnglish, /docker\.sock/);
+  assert.match(byId["compose.sockets"].plainEnglish, /tappd\.sock/);
+  assert.equal(byId["compose.kms"].ladder, "RISKY");
+  assert.match(byId["compose.kms"].plainEnglish, /kms_enabled is false/);
+  assert.equal(byId["compose.allowed_envs"].ladder, "RISKY");
+  assert.match(byId["compose.allowed_envs"].plainEnglish, /NEAR_SEED_PHRASE/);
+  assert.equal(byId["compose.debug_images"].ladder, "RISKY");
+  assert.match(byId["compose.debug_images"].plainEnglish, /example\/app:debug/);
+});
+
+test("PCCS collateral fetches stay on the hardcoded allowlist", async () => {
+  const { createRequire } = await import("node:module");
+  const require = createRequire(import.meta.url);
+  const installed = require("@phala/dcap-qvl/package.json") as { version: string };
+  assert.equal(installed.version, DCAP_QVL_VERSION);
+  assert.equal(collateralUrlAllowed("https://pccs.phala.network/sgx/certification/v4/qe/identity"), true);
+  assert.equal(collateralUrlAllowed("https://api.trustedservices.intel.com/sgx/certification/v4/rootcacrl"), true);
+  assert.equal(collateralUrlAllowed("https://user:pass@pccs.phala.network/"), false);
+  assert.equal(collateralUrlAllowed("http://pccs.phala.network/"), false);
+  assert.equal(collateralUrlAllowed("https://169.254.169.254/latest/meta-data"), false);
+  assert.equal(collateralUrlAllowed("https://example.com/"), false);
+  await assert.rejects(
+    () => fetchFreshCollateral(fixture.quoteHex, "https://example.com/" as never),
+    /not accepted/,
+  );
+  await proveCollateralFetchGuard(fixture.quoteHex);
+  const poisoned = await auditValue(
+    { ...fixture, pccsUrl: "http://169.254.169.254/latest/meta-data", pccs_url: "https://evil.example/pccs" },
+    { now: FROZEN, label: "pccs-poison" },
+  );
+  const dumped = JSON.stringify(poisoned);
+  assert.equal(dumped.includes("169.254.169.254"), false);
+  assert.equal(dumped.includes("evil.example"), false);
+  assert.match(formatReport(poisoned), /@phala\/dcap-qvl 0\.7\.1/);
+  assert.match(formatReport(poisoned), /caller URLs are not accepted/);
 });

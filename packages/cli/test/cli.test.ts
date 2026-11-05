@@ -15,6 +15,9 @@ test("parseArgs accepts an account, --json, and --network", () => {
   assert.equal(parsed.network, "testnet");
   const bad = parseArgs(["--network", "betanet"]);
   assert.ok("error" in bad);
+  const pccs = parseArgs(["ac-sandbox.votron.testnet", "--pccs", "https://evil.example"]);
+  assert.ok("error" in pccs);
+  if ("error" in pccs) assert.match(pccs.error, /not accepted/);
 });
 
 test("a capture file prints a report without calling the network", async () => {

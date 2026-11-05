@@ -26,12 +26,21 @@ test("check_agent returns the ladder for a pasted registration file", async () =
     const parsed = JSON.parse(text) as {
       overall: string;
       summary: string;
-      report: { shade: string; findings: { id: string; ladder: string }[] };
+      report: {
+        shade: string;
+        verifier: { version: string; qeIdentity: string };
+        findings: { id: string; ladder: string; plainEnglish: string }[];
+      };
     };
     assert.equal(parsed.overall, "RISKY");
     assert.match(parsed.summary, /Highest rung/);
     assert.equal(parsed.report.shade, "shade-v1");
+    assert.equal(parsed.report.verifier.version, "0.7.1");
+    assert.equal(parsed.report.verifier.qeIdentity, "mandatory");
+    assert.ok(parsed.report.findings.some((finding) => finding.id === "tdx.signature" && finding.ladder === "PROVEN"));
+    assert.ok(parsed.report.findings.some((finding) => finding.id === "tdx.qe_identity" && finding.ladder === "PROVEN"));
     assert.ok(parsed.report.findings.some((finding) => finding.id === "tdx.registration" && finding.ladder === "PROVEN"));
+    assert.ok(parsed.report.findings.some((finding) => finding.id === "compose.plaintext_secrets"));
     assert.doesNotMatch(text, /hacked/i);
     assert.doesNotMatch(text, /currently running/i);
   } finally {

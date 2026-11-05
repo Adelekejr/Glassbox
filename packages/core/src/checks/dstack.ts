@@ -4,6 +4,7 @@ import type { ComposeFacts, Measurements } from "../types.js";
 
 export type DstackKind =
   | "fixed"
+  | "declared-fixed"
   | "vulnerable-table"
   | "vulnerable-declared"
   | "vulnerable-heuristic"
@@ -28,13 +29,22 @@ export function versionInVulnerableRange(version: string): boolean | null {
   const major = Number(match[1]);
   const minor = Number(match[2]);
   const patch = Number(match[3]);
-  if (major === 0 && minor === 5 && patch === 12) return false;
-  if (major === 0 && minor === 6 && patch === 1) return false;
+  if (isNamedFixRelease(version)) return false;
   const value = major * 1_000_000 + minor * 1_000 + patch;
   const low = 3 * 1_000 + 1;
   const high = 6 * 1_000;
   if (value >= low && value <= high) return true;
   return false;
+}
+
+/** The two releases Phala named as fixes. A declared string is not itself an os_image_hash. */
+export function isNamedFixRelease(version: string): boolean {
+  const match = version.trim().match(/^v?(\d+)\.(\d+)\.(\d+)/);
+  if (!match) return false;
+  const major = Number(match[1]);
+  const minor = Number(match[2]);
+  const patch = Number(match[3]);
+  return (major === 0 && minor === 5 && patch === 12) || (major === 0 && minor === 6 && patch === 1);
 }
 
 export function assessDstack(input: {
@@ -44,13 +54,15 @@ export function assessDstack(input: {
   hasOsImageHashEvent: boolean;
   hasRootfsHashEvent: boolean;
 }): DstackAssessment {
+  const declaredNote = declaredVersionNote(input.compose);
+  // A hash, when present, is the comparison. A declared dstack_version cannot prove a fixed image beside it.
   const fixed = lookupFixedImage(input.osImageHash);
   if (fixed) {
     return {
       kind: "fixed",
       inference: false,
       label: fixed.name,
-      detail: `os_image_hash matches the published fixed image ${fixed.name}.`,
+      detail: `os_image_hash matches the published fixed image ${fixed.name}.${declaredNote}`,
     };
   }
   if (input.osImageHash) {
@@ -58,8 +70,7 @@ export function assessDstack(input: {
       kind: "not-fixed-image",
       inference: true,
       label: input.osImageHash.slice(0, 16),
-      detail:
-        "The registered os_image_hash is not a known fixed image (dstack 0.5.12 or 0.6.1, including the published 0.5.12 dev and nvidia variants). Glassbox's fixed list can lag a newer release, so this is an inference that the image sits in dstack 0.3.1–0.6.0.",
+      detail: `The registered os_image_hash is not a known fixed image (dstack 0.5.12 or 0.6.1, including the published 0.5.12 dev and nvidia variants). Glassbox's fixed list can lag a newer release, so this is an inference that the image sits in dstack 0.3.1–0.6.0.${declaredNote}`,
     };
   }
   const table = matchShadeMeasurements(input.measurements ?? {});
@@ -83,12 +94,12 @@ export function assessDstack(input: {
         detail: `The configuration declares dstack_version ${declared}, which is inside 0.3.1–0.6.0 and is not the 0.5.12 or 0.6.1 fix.`,
       };
     }
-    if (inRange === false && /0\.5\.12|0\.6\.1/.test(declared)) {
+    if (inRange === false && isNamedFixRelease(declared)) {
       return {
-        kind: "fixed",
-        inference: false,
+        kind: "declared-fixed",
+        inference: true,
         label: declared,
-        detail: `The configuration declares dstack_version ${declared}, a fixed release. This is the declared version. No os_image_hash was present to compare.`,
+        detail: `The configuration declares dstack_version ${declared}. No os_image_hash was present to compare with the published fixed images, so this is not a proven fixed image.`,
       };
     }
   }
@@ -108,4 +119,9 @@ export function assessDstack(input: {
     detail:
       "No os_image_hash, Shade 0.5.7/0.5.8 table match, declared dstack_version, or pre-0.5 socket pattern was available. The dstack release is not proven.",
   };
+}
+
+function declaredVersionNote(compose: ComposeFacts | null | undefined): string {
+  if (!compose?.versionDeclared || !compose.dstackVersion) return "";
+  return ` The configuration also declares dstack_version ${compose.dstackVersion}. That string was not used in place of the os_image_hash comparison.`;
 }

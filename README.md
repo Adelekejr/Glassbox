@@ -131,9 +131,11 @@ Chain reads use free public endpoints, FastNEAR first and `near.org` as fallback
 
 History: FastNEAR's tx index (`tx.test.fastnear.com` / `tx.main.fastnear.com` `/v0/account`) returned HTTP 404 on 2026-11-04, so Glassbox uses the NearBlocks API and prints "Powered by Nearblocks.io APIs" when it does. NearBlocks' free tier is personal use.
 
-TDX quotes: `@phala/dcap-qvl` 0.7.1 (Apache-2.0). Fresh collateral: `https://pccs.phala.network`. Credits: `NOTICE`.
+TDX quotes: `@phala/dcap-qvl` 0.7.1 (Apache-2.0). That build is after the QE-identity fix in 0.3.9 (GHSA-796p-j2gh-9m2q) and the JavaScript CRL fix in 0.5.3. The report states this version. QE identity, the quote signature, TCB status at registration, TCB status now, the debug bit, and advisory IDs are separate checks. TCB status is a verdict: anything other than UpToDate is risky. Fresh collateral is fetched only from the hardcoded allowlist (`https://pccs.phala.network`, plus Intel collateral hosts the library may contact). A caller-supplied PCCS URL is rejected.
 
-dstack fixed image hashes, checked 2026-11-04: dstack-0.5.12 `8db40cb2…`, dstack-dev-0.5.12 `e866e987…`, dstack-nvidia-0.5.12 `91fd5d69…`, dstack-nvidia-dev-0.5.12 `e0c9312d…`, dstack-0.6.1 `ec43cb8c…`. Shade's Apache-2.0 tables cover only dstack 0.5.7 and 0.5.8 (`shade-agent-cli/src/utils/measurements.js`).
+Registered app-compose hygiene (each risky when it matches, with an evidence path): plaintext secret values (name and a 4-character sha256 prefix only), `public_logs` / `public_sysinfo`, images not pinned by sha256, `docker.sock` / `tappd.sock` / `dstack.sock` mounts, `kms_enabled: false` or no encrypted env, overly broad `allowed_envs`, and debug or dev images. Credits: `NOTICE`.
+
+dstack fixed image hashes, checked 2026-11-04: dstack-0.5.12 `8db40cb2…`, dstack-dev-0.5.12 `e866e987…`, dstack-nvidia-0.5.12 `91fd5d69…`, dstack-nvidia-dev-0.5.12 `e0c9312d…`, dstack-0.6.1 `ec43cb8c…`. A declared `dstack_version` is not a proven fixed image; the `os_image_hash` is the comparison when it is present. Shade's Apache-2.0 tables cover only dstack 0.5.7 and 0.5.8 (`shade-agent-cli/src/utils/measurements.js`).
 
 MPC allowlists: view `allowed_docker_image_hashes` on `v1.signer` (mainnet) and `v1.signer-prod.testnet`. `v1.signer.testnet` does not exist.
 

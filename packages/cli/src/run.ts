@@ -35,6 +35,9 @@ export function parseArgs(argv: string[]): ParsedArgs | { error: string } {
       help = true;
       continue;
     }
+    if (arg === "--pccs" || arg === "--pccs-url") {
+      return { error: "A caller-supplied PCCS URL is not accepted. Collateral is fetched from the built-in allowlist." };
+    }
     if (arg === "--network") {
       const value = argv[index + 1];
       if (value !== "testnet" && value !== "mainnet") {
