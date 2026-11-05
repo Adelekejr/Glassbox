@@ -48,6 +48,6 @@ Cursor → Settings → MCP, or `.cursor/mcp.json` in the project. A local check
 
 ## Do call the tool
 
-`target` is a NEAR account (`ac-sandbox.votron.testnet`) or pasted JSON. Optional `network` is `testnet` or `mainnet`. A `.testnet` or `.near` suffix selects the network when `network` is omitted. A URL is refused.
+`target` is a NEAR account (`ac-sandbox.votron.testnet`) or pasted JSON. Local file paths are not accepted, including `../` and symlinks. Optional `network` is `testnet` or `mainnet`. A `.testnet` or `.near` suffix selects the network when `network` is omitted. A URL is refused.
 
 The SDK is `@modelcontextprotocol/sdk` 1.32.2 (MIT). `tsx` is MIT and is a dependency so the bin can run from this checkout. There is no npm publish in this submission.

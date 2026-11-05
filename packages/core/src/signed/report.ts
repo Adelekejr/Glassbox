@@ -1,7 +1,7 @@
 import { canonicalJson, canonicalSha256 } from "./canonical.js";
 import { planReportAnchor, type AnchorOutcome } from "./anchor.js";
 import { loadOrCreateSigningKey, signUtf8, type SigningKey } from "./keys.js";
-import type { Ladder, Report } from "../types.js";
+import type { Ladder, ObservationKind, Report } from "../types.js";
 
 export interface CanonicalCheck {
   id: string;
@@ -9,6 +9,10 @@ export interface CanonicalCheck {
   title: string;
   inference: boolean;
   plainEnglish: string;
+  evidenceSource: ObservationKind;
+  observationKind: ObservationKind;
+  /** False for file equality, paste equality, and verification of supplied quote bytes. */
+  liveChain: boolean;
 }
 
 export interface CanonicalReportBody {
@@ -59,6 +63,9 @@ export function buildCanonicalBody(report: Report): CanonicalReportBody {
     title: finding.title,
     inference: finding.inference,
     plainEnglish: finding.plainEnglish,
+    evidenceSource: finding.provenance.evidenceSource,
+    observationKind: finding.provenance.observationKind,
+    liveChain: finding.provenance.liveChain,
   }));
   checks.sort((a, b) => a.id.localeCompare(b.id));
   return {

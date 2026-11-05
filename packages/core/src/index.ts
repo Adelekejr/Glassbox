@@ -30,6 +30,7 @@ export { matchShadeMeasurements } from "./data/shade-measurements.js";
 export { classifyImage, isSecretEnvName, parseCompose, redactAppCompose, sha256Hex } from "./evidence/compose.js";
 export { AccountNotFoundError } from "./near/errors.js";
 export { NearClient } from "./near/rpc.js";
+export { isLiveChainProof } from "./provenance.js";
 export { buildReport, formatReport, presentCheck, type AgentCheck } from "./report.js";
 export { ANCHOR_INSTRUCTIONS, planReportAnchor } from "./signed/anchor.js";
 export { canonicalJson, canonicalSha256 } from "./signed/canonical.js";
@@ -44,7 +45,11 @@ export {
   detectNetwork,
   isNearAccountId,
   type Finding,
+  type FindingProvenance,
+  type InputOrigin,
   type Ladder,
+  type MethodProbe,
   type Network,
+  type ObservationKind,
   type Report,
 } from "./types.js";

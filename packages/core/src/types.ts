@@ -15,6 +15,28 @@ export interface EvidenceLink {
   detail?: string;
 }
 
+/**
+ * Where a finding's bytes or facts came from, and what kind of observation the row records.
+ * `chain` is a fresh RPC or indexer observation from this run.
+ * `file` and `paste` are caller-supplied data.
+ * `computed` is a local check, including verification of supplied quote bytes.
+ * `unavailable` means the check did not complete. A transport failure is not "method absent".
+ */
+export type ObservationKind = "chain" | "file" | "paste" | "computed" | "unavailable";
+
+export interface FindingProvenance {
+  evidenceSource: ObservationKind;
+  observationKind: ObservationKind;
+  /**
+   * True only when both fields are `chain`.
+   * File equality, paste equality, and verification of supplied quote bytes are false.
+   * A consumer must not treat a finding as live chain proof unless this is true and the ladder is PROVEN.
+   */
+  liveChain: boolean;
+  /** Short label. When liveChain is false, this does not describe a live RPC observation. */
+  label: string;
+}
+
 export interface Finding {
   id: string;
   ladder: Ladder;
@@ -23,6 +45,7 @@ export interface Finding {
   /** True when the sentence goes beyond a direct equality or a signature check. */
   inference: boolean;
   evidence: EvidenceLink[];
+  provenance: FindingProvenance;
 }
 
 export interface ApprovalEvent {
@@ -95,6 +118,16 @@ export interface ReportFacts {
   secretEnvNames: string[];
 }
 
+/** How the evidence bundle was obtained. File and paste are caller-supplied. */
+export type InputOrigin = "chain" | "file" | "paste";
+
+/** One view probe. `unavailable` is a transport failure, not MethodNotFound. */
+export interface MethodProbe {
+  name: string;
+  outcome: "present" | "absent" | "unavailable";
+  detail?: string;
+}
+
 export interface Report {
   tool: "glassbox";
   version: string;
@@ -117,6 +150,11 @@ export interface Report {
   overall: Ladder;
   overallPlainEnglish: string;
   findings: Finding[];
+  /**
+   * Live view probes, when this run called them.
+   * `unavailable` means the RPC call failed. It does not mean the method is absent.
+   */
+  methodProbes?: MethodProbe[];
   /** On-demand approve/remove calls for this one contract. Not a watcher. */
   approvalHistory: ApprovalEvent[];
   approvalHistoryNote?: string;
@@ -303,6 +341,12 @@ export interface EvidenceBundle {
   /** ISO time of a successful fresh-collateral fetch. */
   collateralFetchedAt?: string;
   historySource?: "fastnear" | "nearblocks" | "none" | "file";
+  /** Set by the audit entrypoint. File and paste must not be reported as chain. */
+  inputOrigin?: InputOrigin;
+  /** View probes from a live account read. Transport failures stay `unavailable`. */
+  methodProbes?: MethodProbe[];
+  /** Set when a follow-up get_agent call failed after the method was known to exist. */
+  agentViewError?: string;
   historyError?: string;
   rpcEndpoints: string[];
   generatedAt: string;
