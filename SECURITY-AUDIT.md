@@ -2,7 +2,7 @@
 
 The delta review of product adds 1–6 (commit `18b276d`) is in [SECURITY-AUDIT-DELTA.md](SECURITY-AUDIT-DELTA.md). This file is the earlier pass (PR #3) and stays as that record.
 
-Date: 2026-11-05. Scope: this repository (`packages/core`, `packages/cli`, `packages/mcp`, `apps/web`) and the lockfile that `pnpm install --frozen-lockfile` installs. The site was not restyled. The GitHub repository was left **private**. No secrets were added.
+Date: 2026-11-05. Scope: this repository (`packages/core`, `packages/cli`, `packages/mcp`, `apps/web`) and the lockfile that `pnpm install --frozen-lockfile` installs. The site was not restyled. This pass did not change GitHub repository visibility. No secrets were added.
 
 This is a review of our code and dependencies. It does not describe an attack against any third-party service, and it does not claim that a live target was broken into.
 
@@ -96,7 +96,7 @@ Evidence: `apps/web/next.config.ts` sets transpile and webpack only. There is no
 
 ### Info
 
-**10. The repository is private. Hackathon notes say a public repo is required to submit.** Visibility was not changed.
+**10. Repository visibility.** This pass did not change it. Hackathon notes say a public repo is required to submit. Glassbox is public at https://github.com/Adelekejr/Glassbox. This record does not deploy, publish to npm, or submit.
 
 **11. Licences do not look like a submit blocker.** The project is MIT (`LICENSE`). `NOTICE` keeps the Apache-2.0 notices for `@phala/dcap-qvl`, the Shade measurement tables, and `shade-contract-template.wasm`. `pnpm licenses list` groups are MIT, Apache-2.0, ISC, BSD-2-Clause, BSD-3-Clause, 0BSD, BlueOak-1.0.0, CC-BY-4.0 (`caniuse-lite`), and one LGPL-3.0-or-later package: `@img/sharp-libvips-linux-x64` (transitive through Next). No GPL or AGPL package was listed. The app does not use `next/image`. LGPL here is a replaceable native library, not a reason to relicense Glassbox. If you ship `node_modules`, keep that LGPL notice with the binary.
 
