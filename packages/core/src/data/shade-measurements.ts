@@ -161,6 +161,11 @@ export interface ShadeTableMatch {
   instanceType: ShadeInstanceType | null;
   /** RTMR1 and RTMR2 matched. Instance type needs RTMR0 as well. */
   rtmr0Matched: boolean;
+  /**
+   * True when MRTD was absent or equaled the row. A present MRTD that differs
+   * is not a clean table match.
+   */
+  mrtdMatched: boolean;
 }
 
 function norm(value: string | undefined | null): string {
@@ -184,19 +189,25 @@ export function matchShadeMeasurements(input: {
   for (const version of SHADE_MEASUREMENT_VERSIONS) {
     const rows = hardwareAndOSMeasurements[version];
     let versionHit: ShadeInstanceType | null = null;
+    let mrtdMismatch = false;
     for (const instanceType of SHADE_INSTANCE_TYPES) {
       const row = rows[instanceType].rtmrs;
       if (row.rtmr1 !== rtmr1 || row.rtmr2 !== rtmr2) continue;
-      versionHit = instanceType;
       const mrtd = norm(input.mrtd);
-      if (mrtd && mrtd !== row.mrtd) continue;
+      if (mrtd && mrtd !== row.mrtd) {
+        versionHit = instanceType;
+        mrtdMismatch = true;
+        continue;
+      }
+      versionHit = instanceType;
+      mrtdMismatch = false;
       const rtmr0 = norm(input.rtmr0);
       if (rtmr0 && rtmr0 === row.rtmr0) {
-        return { version, instanceType, rtmr0Matched: true };
+        return { version, instanceType, rtmr0Matched: true, mrtdMatched: true };
       }
     }
     if (versionHit) {
-      return { version, instanceType: null, rtmr0Matched: false };
+      return { version, instanceType: null, rtmr0Matched: false, mrtdMatched: !mrtdMismatch };
     }
   }
   return null;

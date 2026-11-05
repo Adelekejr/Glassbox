@@ -95,3 +95,26 @@ export function eventPayload(events: EventLogEntry[] | undefined, name: string):
 export function hasEvent(events: EventLogEntry[] | undefined, name: string): boolean {
   return Boolean(events?.some((entry) => (entry.event ?? "").toLowerCase() === name.toLowerCase()));
 }
+
+export interface OsImageHashSelection {
+  /** Hash used for the fixed-image comparison. Absent when the two sources disagree or neither is present. */
+  hash?: string;
+  /** True when `os_image_hash` and the os-image-hash event payload both exist and are not the same hash. */
+  conflict: boolean;
+}
+
+/**
+ * The field and the event are different inputs. When both are present they
+ * must be the same hash before either one can be a known fixed image.
+ */
+export function selectOsImageHash(tcb: TcbInfo | null | undefined): OsImageHashSelection {
+  const field = tcb?.os_image_hash?.trim();
+  const event = eventPayload(tcb?.event_log, "os-image-hash");
+  if (field && event && !sameOsHex(field, event)) return { conflict: true };
+  const hash = field || event;
+  return hash ? { hash, conflict: false } : { conflict: false };
+}
+
+function sameOsHex(left: string, right: string): boolean {
+  return left.toLowerCase().replace(/^0x/, "") === right.toLowerCase().replace(/^0x/, "");
+}

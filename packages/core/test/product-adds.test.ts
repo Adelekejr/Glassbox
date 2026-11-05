@@ -9,7 +9,7 @@ import { assessDstack } from "../src/checks/dstack.js";
 import { liveEndpointAllowed, probeLiveGuest } from "../src/checks/liveness.js";
 import { assessProvenance } from "../src/checks/provenance.js";
 import { base58Encode } from "../src/data/base58.js";
-import { hardwareAndOSMeasurements } from "../src/data/shade-measurements.js";
+import { hardwareAndOSMeasurements, matchShadeMeasurements } from "../src/data/shade-measurements.js";
 import { SHADE_CONTRACT_TEMPLATES, codeHashOfWasm } from "../src/data/shade-templates.js";
 import { diffReports, formatDiff } from "../src/diff.js";
 import { buildReport, formatReport } from "../src/report.js";
@@ -201,6 +201,160 @@ test("diff of two registration files states what changed", async () => {
   assert.doesNotMatch(text, /currently running/i);
   const same = diffReports(left, left);
   assert.match(same.summary, /No compared field changed/);
+});
+
+test("a mismatched MRTD is not a clean table hit and is not a known fixed image", () => {
+  const row = hardwareAndOSMeasurements["0.5.8"]["tdx.small"].rtmrs;
+  const mismatched = { ...row, mrtd: "ab".repeat(48) };
+  const match = matchShadeMeasurements(mismatched);
+  assert.equal(match?.mrtdMatched, false);
+  const provenance = assessProvenance(mismatched);
+  assert.notEqual(provenance.ladder, "PROVEN");
+  assert.doesNotMatch(provenance.evidence.map((item) => item.detail).join("\n"), /it matches the MRTD/);
+  assert.match(provenance.detail, /not a known fixed image|does not treat the registered configuration as a known fixed image/);
+  const fixedHash = "ec43cb8c5e04b6bb6c53b33b16076a01d83d01f7f4b703f2f78a0d947d6247e6";
+  const besideFixed = assessProvenance({ ...mismatched, osImageHash: fixedHash });
+  assert.notEqual(besideFixed.ladder, "PROVEN");
+  assert.match(besideFixed.detail, /does not treat the registered configuration as a known fixed image/);
+  const dstack = assessDstack({
+    osImageHash: fixedHash,
+    measurements: mismatched,
+    hasOsImageHashEvent: false,
+    hasRootfsHashEvent: false,
+  });
+  assert.notEqual(dstack.kind, "fixed");
+  assert.match(dstack.detail, /does not treat the registered configuration as a known fixed image/);
+});
+
+test("disagreeing os_image_hash sources are not a known fixed image", async () => {
+  const fixedHash = "ec43cb8c5e04b6bb6c53b33b16076a01d83d01f7f4b703f2f78a0d947d6247e6";
+  const conflict = await auditValue(
+    {
+      tcb_info: {
+        os_image_hash: fixedHash,
+        event_log: [{ imr: 3, event: "os-image-hash", digest: "aa".repeat(48), event_payload: "deadbeef" }],
+        mrtd: "11".repeat(48),
+        rtmr0: "22".repeat(48),
+        rtmr1: "33".repeat(48),
+        rtmr2: "44".repeat(48),
+      },
+    },
+    { now: FROZEN, label: "hash-conflict" },
+  );
+  const byId = Object.fromEntries(conflict.findings.map((finding) => [finding.id, finding]));
+  assert.notEqual(byId["measurements.provenance"].ladder, "PROVEN");
+  assert.notEqual(byId["dstack.range"].ladder, "PROVEN");
+  assert.doesNotMatch(byId["dstack.range"].title, /is a known fixed image/);
+  assert.doesNotMatch(byId["dstack.upgrade"].title, /fixed image/);
+  assert.match(`${byId["measurements.provenance"].plainEnglish} ${byId["dstack.range"].plainEnglish}`, /known fixed image/);
+  assert.doesNotMatch(formatReport(conflict), /hacked/i);
+
+  const agreed = await auditValue(
+    {
+      tcb_info: {
+        os_image_hash: fixedHash,
+        event_log: [{ imr: 3, event: "os-image-hash", digest: "bb".repeat(48), event_payload: `0x${fixedHash}` }],
+        rtmr1: "33".repeat(48),
+        rtmr2: "44".repeat(48),
+      },
+    },
+    { now: FROZEN, label: "hash-agreed" },
+  );
+  const agreedProvenance = agreed.findings.find((finding) => finding.id === "measurements.provenance");
+  assert.equal(agreedProvenance?.ladder, "PROVEN");
+  assert.match(agreedProvenance?.title ?? "", /known fixed image/);
+});
+
+test("a fixed hash does not hide a Shade table on the agent row", () => {
+  const row = hardwareAndOSMeasurements["0.5.8"]["tdx.small"].rtmrs;
+  const fixedHash = "ec43cb8c5e04b6bb6c53b33b16076a01d83d01f7f4b703f2f78a0d947d6247e6";
+  const report = buildReport(
+    {
+      target: "shade.test.near",
+      network: "offline",
+      shade: "shade-v2",
+      shadeDetail: "test",
+      methodsPresent: [],
+      registration: { tcbInfo: { os_image_hash: fixedHash } },
+      v2Agents: [
+        {
+          accountId: "agent.test.near",
+          measurements: { ...row },
+          validity: "Valid",
+          valid: true,
+        },
+      ],
+      compose: null,
+      rpcEndpoints: [],
+      generatedAt: FROZEN.toISOString(),
+      historySource: "file",
+    },
+    { now: FROZEN },
+  );
+  const byId = Object.fromEntries(report.findings.map((finding) => [finding.id, finding]));
+  assert.notEqual(byId["dstack.range"].ladder, "PROVEN");
+  assert.doesNotMatch(byId["dstack.range"].title, /is a known fixed image/);
+  assert.equal(byId["measurements.provenance"].ladder, "RISKY");
+  assert.match(byId["measurements.provenance"].plainEnglish, /does not treat the registered configuration as a known fixed image/);
+  assert.doesNotMatch(byId["dstack.upgrade"].title, /this fixed image/);
+});
+
+test("a malformed access key does not throw, and an outside signer is not a single local key", () => {
+  const target = "shade.test.near";
+  const malformed = assessApprover({
+    shade: "shade-v1",
+    target,
+    ownerId: target,
+    historyLoaded: true,
+    approvalHistory: [],
+    accessKeys: [
+      { public_key: "ed25519:one", access_key: { permission: "FullAccess" } },
+      { public_key: "ed25519:bad", access_key: { permission: { FunctionCall: null } } } as never,
+    ],
+  });
+  assert.equal(malformed.ladder, "NOT_PROVEN");
+  assert.match(malformed.plainEnglish, /could not be read/);
+
+  const outside = assessApprover({
+    shade: "shade-v2",
+    target,
+    ownerId: target,
+    historyLoaded: true,
+    approvalHistory: [
+      {
+        method: "approve_measurements",
+        kind: "approve",
+        txHash: "abc",
+        signer: "other.near",
+        success: true,
+        detail: "mrtd",
+      },
+    ],
+    accessKeys: [{ public_key: "ed25519:one", access_key: { permission: "FullAccess" } }],
+  });
+  assert.notEqual(outside.ladder, "PROVEN");
+  assert.match(outside.plainEnglish, /other\.near/);
+});
+
+test("pasted JSON does not contact a guest URL", async () => {
+  let called = false;
+  const report = await auditValue(
+    {
+      liveEndpoint: "http://169.254.169.254/latest/meta-data",
+      tcb_info: { os_image_hash: "ab" },
+    },
+    {
+      now: FROZEN,
+      label: "no-probe",
+      fetch: async () => {
+        called = true;
+        return new Response("no");
+      },
+    },
+  );
+  assert.equal(called, false);
+  assert.equal(report.freshness.live.attempted, false);
+  assert.match(report.freshness.live.detail, /did not send a nonce/i);
 });
 
 test("anchoring records intent and does not describe a sent transaction", () => {

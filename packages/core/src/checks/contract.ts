@@ -132,6 +132,34 @@ export function assessApprover(input: {
   const keys = describeKeys(input.accessKeys, input.target, methods);
   evidence.push({ label: "full-access keys", detail: String(keys.fullAccess) });
   evidence.push({ label: "approve-capable keys", detail: String(keys.approveCapable) });
+  if (keys.unreadable && keys.approveCapable <= 1 && keys.fullAccess <= 1) {
+    return row(
+      "contract.approver",
+      "NOT_PROVEN",
+      `Who can call ${methodList} was not proven`,
+      `The contract view names this account as owner. An access key on the account could not be read, so a single key versus a broader set is not proven.`,
+      evidence,
+    );
+  }
+  if (keys.approveCapable > 1 || keys.fullAccess > 1) {
+    return row(
+      "contract.approver",
+      "RISKY",
+      `Who can call ${methodList} is broader than a single full-access key`,
+      `The contract view names this account as owner. The account has ${keys.fullAccess} full-access key${keys.fullAccess === 1 ? "" : "s"} and ${keys.approveCapable} key${keys.approveCapable === 1 ? "" : "s"} that can call ${methodList}. That is broader than a single full-access key. This is the registered key set, not a live observation.`,
+      evidence,
+    );
+  }
+  const outside = signers.filter((signer) => signer !== input.target);
+  if (outside.length > 0) {
+    return row(
+      "contract.approver",
+      "NOT_PROVEN",
+      `Who can call ${methodList} was not proven`,
+      `The contract view names this account as owner. Indexed history shows ${methodList} signed by ${outside.join(", ")}, which is not this account. A single key on this account does not prove that signer is the only caller. This is history of the registered contract, not a live observation.`,
+      evidence,
+    );
+  }
   if (keys.fullAccess === 1 && keys.approveCapable === 1 && keys.singleIsFullAccess) {
     return row(
       "contract.approver",
@@ -147,15 +175,6 @@ export function assessApprover(input: {
       "PROVEN",
       `One function-call key can call ${methodList}`,
       `The contract view names this account as owner. One function-call key can call ${methodList}. No full-access key is on the account. That is a single key, not a broader set. This is the registered key set, not a live observation.`,
-      evidence,
-    );
-  }
-  if (keys.approveCapable > 1 || keys.fullAccess > 1) {
-    return row(
-      "contract.approver",
-      "RISKY",
-      `Who can call ${methodList} is broader than a single full-access key`,
-      `The contract view names this account as owner. The account has ${keys.fullAccess} full-access key${keys.fullAccess === 1 ? "" : "s"} and ${keys.approveCapable} key${keys.approveCapable === 1 ? "" : "s"} that can call ${methodList}. That is broader than a single full-access key. This is the registered key set, not a live observation.`,
       evidence,
     );
   }
@@ -326,12 +345,21 @@ function describeKeys(keys: AccessKeyView[], contractId: string, methods: string
   approveCapable: number;
   singleIsFullAccess: boolean;
   fullAccessId?: string;
+  unreadable: boolean;
 } {
   let fullAccess = 0;
   let approveCapable = 0;
   let fullAccessId: string | undefined;
   let onlyFull = true;
+  let unreadable = false;
+  if (!Array.isArray(keys)) {
+    return { fullAccess: 0, approveCapable: 0, singleIsFullAccess: false, unreadable: true };
+  }
   for (const key of keys) {
+    if (!key || typeof key !== "object") {
+      unreadable = true;
+      continue;
+    }
     const permission = key.access_key?.permission;
     if (permission === "FullAccess") {
       fullAccess += 1;
@@ -340,21 +368,36 @@ function describeKeys(keys: AccessKeyView[], contractId: string, methods: string
       continue;
     }
     if (permission && typeof permission === "object" && "FunctionCall" in permission) {
-      const call = permission.FunctionCall;
-      if (call.receiver_id && call.receiver_id !== contractId) continue;
-      const names = call.method_names ?? [];
+      const call = permission.FunctionCall as { receiver_id?: unknown; method_names?: unknown } | null;
+      if (!call || typeof call !== "object") {
+        unreadable = true;
+        continue;
+      }
+      if (typeof call.receiver_id === "string" && call.receiver_id !== contractId) continue;
+      if (call.receiver_id !== undefined && typeof call.receiver_id !== "string") {
+        unreadable = true;
+        continue;
+      }
+      if (!Array.isArray(call.method_names) || call.method_names.some((name) => typeof name !== "string")) {
+        unreadable = true;
+        continue;
+      }
+      const names = call.method_names as string[];
       const can = names.length === 0 || names.some((name) => methods.includes(name));
       if (can) {
         approveCapable += 1;
         onlyFull = false;
       }
+    } else {
+      unreadable = true;
     }
   }
   return {
     fullAccess,
     approveCapable,
-    singleIsFullAccess: approveCapable === 1 && fullAccess === 1 && onlyFull,
+    singleIsFullAccess: approveCapable === 1 && fullAccess === 1 && onlyFull && !unreadable,
     fullAccessId: fullAccess === 1 ? fullAccessId : undefined,
+    unreadable,
   };
 }
 

@@ -1,5 +1,7 @@
 # Glassbox security audit
 
+The delta review of product adds 1–6 (commit `18b276d`) is in [SECURITY-AUDIT-DELTA.md](SECURITY-AUDIT-DELTA.md). This file is the earlier pass (PR #3) and stays as that record.
+
 Date: 2026-11-05. Scope: this repository (`packages/core`, `packages/cli`, `packages/mcp`, `apps/web`) and the lockfile that `pnpm install --frozen-lockfile` installs. The site was not restyled. The GitHub repository was left **private**. No secrets were added.
 
 This is a review of our code and dependencies. It does not describe an attack against any third-party service, and it does not claim that a live target was broken into.

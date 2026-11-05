@@ -53,19 +53,48 @@ export function assessDstack(input: {
   compose?: ComposeFacts | null;
   hasOsImageHashEvent: boolean;
   hasRootfsHashEvent: boolean;
+  /** The os_image_hash field and the os-image-hash event payload both exist and differ. */
+  osImageHashConflict?: boolean;
 }): DstackAssessment {
   const declaredNote = declaredVersionNote(input.compose);
   // A hash, when present, is the comparison. A declared dstack_version cannot prove a fixed image beside it.
   // A Shade table hit is not hidden by an os_image_hash, and the two are not merged into a fixed image when they disagree.
-  const fixed = lookupFixedImage(input.osImageHash);
+  // A present MRTD that misses the row is not a clean table hit and cannot be ignored in favor of a fixed hash.
+  const fixed = input.osImageHashConflict ? null : lookupFixedImage(input.osImageHash);
   const table = matchShadeMeasurements(input.measurements ?? {});
-  if (fixed && table) {
-    const instance = table.instanceType ? `, instance ${table.instanceType}` : "";
+  const cleanTable = table?.mrtdMatched ? table : null;
+  if (input.osImageHashConflict) {
+    if (cleanTable) {
+      const instance = cleanTable.instanceType ? `, instance ${cleanTable.instanceType}` : "";
+      return {
+        kind: "vulnerable-table",
+        inference: false,
+        label: cleanTable.version,
+        detail: `RTMR1 and RTMR2 match Shade's published Apache-2.0 measurement table for dstack ${cleanTable.version}${instance}. The registered os_image_hash and the os-image-hash event payload differ, so neither value is treated as a known fixed image. The table is a comparison, not a measurement Glassbox computed.${declaredNote}`,
+      };
+    }
+    return {
+      kind: "unknown",
+      inference: false,
+      label: "conflicting os_image_hash",
+      detail: `The registered os_image_hash and the os-image-hash event payload differ. Glassbox does not treat the registered configuration as a known fixed image.${table && !table.mrtdMatched ? ` RTMR1 and RTMR2 equal Shade's table for dstack ${table.version}, and the MRTD does not match that row.` : ""}${declaredNote}`,
+    };
+  }
+  if (fixed && table && !table.mrtdMatched) {
+    return {
+      kind: "unknown",
+      inference: false,
+      label: fixed.name,
+      detail: `os_image_hash matches the published fixed image ${fixed.name}, and RTMR1 and RTMR2 equal Shade's table for dstack ${table.version}, and the MRTD does not match that row. That is not a clean table match. Glassbox does not treat the registered configuration as a known fixed image.${declaredNote}`,
+    };
+  }
+  if (fixed && cleanTable) {
+    const instance = cleanTable.instanceType ? `, instance ${cleanTable.instanceType}` : "";
     return {
       kind: "vulnerable-table",
       inference: false,
-      label: `${fixed.name} vs ${table.version}`,
-      detail: `os_image_hash matches the published fixed image ${fixed.name}, and RTMR1 and RTMR2 match Shade's published Apache-2.0 measurement table for dstack ${table.version}${instance}. That table is inside 0.3.1–0.6.0. The two comparisons disagree. Glassbox does not treat the registered configuration as a known fixed image. The table is a comparison, not a measurement Glassbox computed.${declaredNote}`,
+      label: `${fixed.name} vs ${cleanTable.version}`,
+      detail: `os_image_hash matches the published fixed image ${fixed.name}, and RTMR1 and RTMR2 match Shade's published Apache-2.0 measurement table for dstack ${cleanTable.version}${instance}. That table is inside 0.3.1–0.6.0. The two comparisons disagree. Glassbox does not treat the registered configuration as a known fixed image. The table is a comparison, not a measurement Glassbox computed.${declaredNote}`,
     };
   }
   if (fixed) {
@@ -76,14 +105,22 @@ export function assessDstack(input: {
       detail: `os_image_hash matches the published fixed image ${fixed.name}.${declaredNote}`,
     };
   }
-  if (table) {
-    const instance = table.instanceType ? `, instance ${table.instanceType}` : "";
+  if (table && !table.mrtdMatched) {
+    return {
+      kind: "unknown",
+      inference: false,
+      label: table.version,
+      detail: `RTMR1 and RTMR2 equal Shade's table for dstack ${table.version}, and the MRTD does not match that row. That is not a clean table match, and it is not a known fixed image.${declaredNote}`,
+    };
+  }
+  if (cleanTable) {
+    const instance = cleanTable.instanceType ? `, instance ${cleanTable.instanceType}` : "";
     const hashNote = input.osImageHash ? " The registered os_image_hash is not a known fixed image." : "";
     return {
       kind: "vulnerable-table",
       inference: false,
-      label: table.version,
-      detail: `RTMR1 and RTMR2 match Shade's published Apache-2.0 measurement table for dstack ${table.version}${instance}. That release is inside 0.3.1–0.6.0. The table is a comparison, not a measurement Glassbox computed.${hashNote}${declaredNote}`,
+      label: cleanTable.version,
+      detail: `RTMR1 and RTMR2 match Shade's published Apache-2.0 measurement table for dstack ${cleanTable.version}${instance}. That release is inside 0.3.1–0.6.0. The table is a comparison, not a measurement Glassbox computed.${hashNote}${declaredNote}`,
     };
   }
   if (input.osImageHash) {

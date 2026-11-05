@@ -4,7 +4,7 @@ import { assessApprover, assessContractCode, assessRemove } from "./checks/contr
 import { unattemptedLiveObservation } from "./checks/liveness.js";
 import { assessProvenance } from "./checks/provenance.js";
 import { isZeroMeasurement, measurementsMatch } from "./evidence/measurements.js";
-import { eventPayload, hasEvent } from "./evidence/registration.js";
+import { eventPayload, hasEvent, selectOsImageHash } from "./evidence/registration.js";
 import { assessAccessKeys } from "./checks/access-keys.js";
 import { assessDstack } from "./checks/dstack.js";
 import { entryExpiry, formatExpiry, matchingDigests } from "./checks/mpc.js";
@@ -639,7 +639,7 @@ function measurementListFinding(bundle: EvidenceBundle): Finding {
       [{ label: "Approved rows", detail: String(rows.length) }],
     );
   }
-  const tableHits = rows.filter((row) => matchShadeMeasurements(row));
+  const tableHits = rows.filter((row) => matchShadeMeasurements(row)?.mrtdMatched === true);
   if (tableHits.length > 0) {
     return make(
       "measurements.approved",
@@ -655,7 +655,7 @@ function measurementListFinding(bundle: EvidenceBundle): Finding {
     "NOT_PROVEN",
     "Approved measurements do not name a known dstack release",
     false,
-    `${rows.length} approved measurement rows were read. None of the RTMR1/RTMR2 pairs are in Shade's 0.5.7 or 0.5.8 tables, and this view did not include an os_image_hash. The dstack release of those rows is not proven. Unknown is not a claim that the rows are fixed.`,
+    `${rows.length} approved measurement rows were read. None of the rows are a clean match for Shade's 0.5.7 or 0.5.8 tables. A clean match needs RTMR1 and RTMR2, and the MRTD when it is present. This view did not include an os_image_hash. The dstack release of those rows is not proven. Unknown is not a claim that the rows are fixed.`,
     [{ label: "Approved rows", detail: String(rows.length) }],
   );
 }
@@ -664,17 +664,12 @@ function composeFindings(bundle: EvidenceBundle, now: Date): Finding[] {
   if (bundle.shade === "mpc-signer") return [];
   const compose = bundle.compose;
   const tcb = bundle.registration?.tcbInfo;
-  const osHash = tcb?.os_image_hash ?? eventPayload(tcb?.event_log, "os-image-hash");
-  const measurements: Measurements = {
-    mrtd: tcb?.mrtd,
-    rtmr0: tcb?.rtmr0,
-    rtmr1: tcb?.rtmr1,
-    rtmr2: tcb?.rtmr2,
-    rtmr3: tcb?.rtmr3,
-  };
+  const selected = selectOsImageHash(tcb);
+  const measurements = registeredMeasurements(tcb, firstMeasurement(bundle));
   const assessment = assessDstack({
     measurements,
-    osImageHash: osHash,
+    osImageHash: selected.hash,
+    osImageHashConflict: selected.conflict,
     compose,
     hasOsImageHashEvent: hasEvent(tcb?.event_log, "os-image-hash"),
     hasRootfsHashEvent: hasEvent(tcb?.event_log, "rootfs-hash"),
@@ -1407,14 +1402,12 @@ function sourceLines(bundle: EvidenceBundle): string[] {
 
 function provenanceFinding(bundle: EvidenceBundle): Finding {
   const tcb = bundle.registration?.tcbInfo;
-  const osHash = tcb?.os_image_hash ?? eventPayload(tcb?.event_log, "os-image-hash");
-  const row = firstMeasurement(bundle);
+  const selected = selectOsImageHash(tcb);
+  const measurements = registeredMeasurements(tcb, firstMeasurement(bundle));
   const assessment = assessProvenance({
-    osImageHash: osHash ?? row?.osImageHash,
-    mrtd: tcb?.mrtd ?? row?.mrtd,
-    rtmr0: tcb?.rtmr0 ?? row?.rtmr0,
-    rtmr1: tcb?.rtmr1 ?? row?.rtmr1,
-    rtmr2: tcb?.rtmr2 ?? row?.rtmr2,
+    osImageHash: selected.hash,
+    osImageHashConflict: selected.conflict,
+    ...measurements,
   });
   return make(
     "measurements.provenance",
@@ -1424,6 +1417,16 @@ function provenanceFinding(bundle: EvidenceBundle): Finding {
     assessment.detail,
     assessment.evidence.map((item) => ({ label: item.label, detail: item.detail })),
   );
+}
+
+function registeredMeasurements(
+  tcb: { mrtd?: string; rtmr0?: string; rtmr1?: string; rtmr2?: string } | null | undefined,
+  row: { mrtd?: string; rtmr0?: string; rtmr1?: string; rtmr2?: string } | null,
+): { mrtd?: string; rtmr0?: string; rtmr1?: string; rtmr2?: string } {
+  if (tcb?.mrtd || tcb?.rtmr0 || tcb?.rtmr1 || tcb?.rtmr2) {
+    return { mrtd: tcb.mrtd, rtmr0: tcb.rtmr0, rtmr1: tcb.rtmr1, rtmr2: tcb.rtmr2 };
+  }
+  return { mrtd: row?.mrtd, rtmr0: row?.rtmr0, rtmr1: row?.rtmr1, rtmr2: row?.rtmr2 };
 }
 
 function firstMeasurement(bundle: EvidenceBundle): {
@@ -1523,16 +1526,16 @@ function formatAge(fromSec: number, now: Date): string {
 
 function reportFacts(bundle: EvidenceBundle): ReportFacts {
   const tcb = bundle.registration?.tcbInfo;
-  const row = firstMeasurement(bundle);
-  const osHash = tcb?.os_image_hash ?? eventPayload(tcb?.event_log, "os-image-hash") ?? null;
+  const selected = selectOsImageHash(tcb);
+  const measurements = registeredMeasurements(tcb, firstMeasurement(bundle));
   return {
     appCodehash: bundle.agentView?.codehash ?? null,
     contractCodeHash: bundle.codeHash ?? null,
-    osImageHash: osHash,
-    mrtd: tcb?.mrtd ?? row?.mrtd ?? null,
-    rtmr0: tcb?.rtmr0 ?? row?.rtmr0 ?? null,
-    rtmr1: tcb?.rtmr1 ?? row?.rtmr1 ?? null,
-    rtmr2: tcb?.rtmr2 ?? row?.rtmr2 ?? null,
+    osImageHash: selected.conflict ? null : selected.hash ?? null,
+    mrtd: measurements.mrtd ?? null,
+    rtmr0: measurements.rtmr0 ?? null,
+    rtmr1: measurements.rtmr1 ?? null,
+    rtmr2: measurements.rtmr2 ?? null,
     publicLogs: bundle.compose?.publicLogs ?? null,
     publicSysinfo: bundle.compose?.publicSysinfo ?? null,
     images: (bundle.compose?.images ?? []).map((image) => image.ref),

@@ -125,6 +125,23 @@ test("method-not-found is distinct from a panic, which means the method exists",
   const present = await client.viewFunction("ac-sandbox.votron.testnet", "get_agent", {});
   assert.equal(present.ok, false);
   assert.equal(present.reason, "execution_error");
+  const panicClient = new NearClient({
+    network: "testnet",
+    endpoints: ["https://rpc.example"],
+    minIntervalMs: 0,
+    sleep: async () => undefined,
+    fetch: async () =>
+      jsonResponse({
+        result: {
+          result: [],
+          error: 'wasm execution failed with error: HostError(GuestPanic { panic_msg: "MethodNotFound" })',
+          logs: [],
+        },
+      }),
+  });
+  const panicked = await panicClient.viewFunction("shade.test.near", "remove_codehash", {});
+  assert.equal(panicked.ok, false);
+  assert.equal(panicked.reason, "execution_error");
   const encoded = Buffer.from(JSON.stringify({ checksum: "aa", codehash: "bb" }), "utf8");
   const okClient = new NearClient({
     network: "testnet",
