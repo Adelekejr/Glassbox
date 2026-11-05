@@ -61,3 +61,14 @@ v1.signer (mainnet) and v1.signer-prod.testnet.
 
 Sibling project, separate codebase: Gideon, a NEAR pre-send safety checker
 by the same builder. Glassbox does not judge payment correctness.
+
+---------------------------------------------------------------------------
+Fonts
+Licence: SIL Open Font License 1.1
+Sora — Copyright 2019 The Sora Project Authors (https://github.com/sora-xor/sora-font)
+Onest — Copyright 2021 The Onest Project Authors (https://github.com/googlefonts/onest)
+Martian Mono — Copyright 2021 The Martian Mono Project Authors (https://github.com/evilmartians/mono)
+Files: apps/web/public/fonts/Sora.woff2, Onest.woff2, MartianMono.woff2
+Licence texts: apps/web/public/fonts/OFL-Sora.txt, OFL-Onest.txt, OFL-MartianMono.txt
+
+Self-hosted subsets. The web app does not request these fonts from a CDN.
