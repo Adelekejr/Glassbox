@@ -33,10 +33,17 @@ const SURFACES: Surface[] = [
     note: <><code>check_agent</code> takes a NEAR account or pasted JSON. It returns the same ladder as JSON, a one-sentence summary, and <code>overall</code> (the highest rung). Stdio transport. Publishing <code>glassbox-mcp</code> to npm is not part of this submission.</>,
   },
   {
-    id: "web", title: "Local web form", tag: "localhost", file: "Terminal",
-    sub: "This page, on your own machine. It is not deployed.",
-    lines: [{ kind: "cmd", text: "pnpm --filter web dev" }, { kind: "c", text: "# then open http://localhost:3000" }],
-    note: <>The page POSTs to <code>/api/audit</code>, which calls the core library and does not read local files. One process accepts 10 audits per rolling minute, then HTTP 429. The route stays on localhost until a deliberate deploy.</>,
+    id: "web", title: "Web form", tag: "deployed", file: "Public site",
+    sub: "This page is on the public site. You can also run it on your computer.",
+    lines: [
+      { kind: "c", text: "# public site" },
+      { kind: "raw", text: "https://glassbox-inky.vercel.app" },
+      { kind: "raw", text: "" },
+      { kind: "c", text: "# same form on your computer" },
+      { kind: "cmd", text: "pnpm --filter web dev" },
+      { kind: "c", text: "# then open http://localhost:3000" },
+    ],
+    note: <>This page POSTs to <code>/api/audit</code>, which calls the core library and does not read local files. One process accepts 10 audits per rolling minute, then HTTP 429. That cap is per server process. It resets on restart and is not shared by every visitor.</>,
   },
 ];
 

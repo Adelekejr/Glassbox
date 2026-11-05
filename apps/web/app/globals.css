@@ -158,8 +158,39 @@ h1, h2, h3 { margin: 0; font-family: var(--font-display); font-weight: 700; colo
 .nav a:hover { color: var(--text); background: var(--hover); }
 .nav a[aria-current="page"] { color: var(--text); }
 .topbar .end { margin-left: auto; display: flex; align-items: center; gap: var(--s-2); }
-.status-pill { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r-pill); color: var(--text-2); }
-.status-pill i { width: 6px; height: 6px; border-radius: 1.5px; background: var(--text-3); }
+.status-pill { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r-pill); color: var(--text-2); white-space: nowrap; }
+.status-pill i { width: 6px; height: 6px; border-radius: 1.5px; background: var(--text-3); flex: none; }
+.status-pill.is-on i { background: var(--accent); }
+.icon-btn.menu-btn { display: none; }
+.drawer-root { position: fixed; inset: 0; z-index: 40; overflow: hidden; }
+.drawer-scrim { position: absolute; inset: 0; background: color-mix(in srgb, var(--ink-950) 62%, transparent); cursor: pointer; animation: gb-scrim-in var(--d-base) var(--ease-out); }
+.drawer {
+  position: absolute; top: 0; right: 0; bottom: 0; z-index: 1;
+  width: min(22rem, calc(100vw - 3rem));
+  display: flex; flex-direction: column;
+  padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) 20px;
+  background: var(--surface); color: var(--text);
+  border-left: 1px solid var(--line-strong); box-shadow: var(--shadow);
+  overflow: auto; overscroll-behavior: contain;
+  animation: gb-drawer-in var(--d-slow) var(--ease-out);
+}
+.drawer-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); margin-bottom: var(--s-6); }
+.drawer-title { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+.drawer-title .mark { width: 22px; height: 22px; flex: none; }
+.drawer-nav { display: flex; flex-direction: column; gap: 4px; }
+.drawer-nav a {
+  display: flex; align-items: center; min-height: 48px; padding: 12px 14px;
+  border-radius: var(--r-md); color: var(--text-2); text-decoration: none;
+  font-weight: 500; font-size: 1.0625rem;
+  transition: color var(--d-fast) var(--ease-out), background-color var(--d-fast) var(--ease-out);
+}
+.drawer-nav a:hover { color: var(--text); background: var(--hover); text-decoration: none; }
+.drawer-nav a[aria-current="page"] { color: var(--text); background: var(--hover); box-shadow: inset 3px 0 0 var(--accent); }
+.drawer-foot { margin-top: auto; padding-top: var(--s-6); display: grid; gap: var(--s-3); justify-items: start; }
+.drawer-foot p { color: var(--text-2); font-size: var(--fs-sm); line-height: 1.5; }
+@keyframes gb-scrim-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes gb-drawer-in { from { transform: translateX(100%); } to { transform: none; } }
+@media (min-width: 961px) { .drawer-root { display: none; } }
 .icon-btn { flex: none; display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: var(--r-sm); border: 1px solid transparent; background: transparent; color: var(--text-2); cursor: pointer; transition: color var(--d-fast) var(--ease-out), background-color var(--d-fast) var(--ease-out), transform var(--d-press) var(--ease-out); text-decoration: none; }
 .icon-btn:hover { color: var(--text); background: var(--hover); }
 .icon-btn:active { transform: scale(0.96); }
@@ -461,6 +492,7 @@ h1, h2, h3 { margin: 0; font-family: var(--font-display); font-weight: 700; colo
 }
 @media (max-width: 960px) {
   .nav { display: none; }
+  .icon-btn.menu-btn { display: inline-grid; }
   .hero-grid, .sec-head, .rung-row, .threat, .surfaces, .footer-grid { grid-template-columns: minmax(0, 1fr); }
   .hero h1 { max-width: 16ch; }
   .steps { grid-template-columns: minmax(0, 1fr); }
@@ -471,7 +503,7 @@ h1, h2, h3 { margin: 0; font-family: var(--font-display); font-weight: 700; colo
 @media (max-width: 640px) {
   :root { --gutter: 20px; }
   .topbar .wrap { height: 60px; gap: var(--s-3); }
-  .status-pill { display: none; }
+  .topbar .status-pill { display: none; }
   .brand .wordmark { height: 17px; }
   .audit { padding: var(--s-4); margin-top: var(--s-6); }
   .input-row { flex-direction: column; align-items: stretch; }
