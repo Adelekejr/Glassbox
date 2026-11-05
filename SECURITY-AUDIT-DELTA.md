@@ -94,3 +94,11 @@ Recommendation: when a later build grows a sender, put it in a new function that
 - The web form was not clicked. The route, the classifier test, and the React render path were re-read. This pass does not change the page.
 - Dependency advisories were not patched and were not turned into proof-of-concept inputs.
 - The repository visibility was not changed.
+
+## Later note (2026-11-05, honesty pass)
+
+Open item 1 (a pasted JSON `code_hash` or `os_image_hash` can be PROVEN without a chain read) was not closed by changing the ladder. The comparison stays PROVEN. When `historySource` is `file`, those sentences now say the file supplied the value and that this run did not call `view_account`, `get_agent`, or `view_access_key_list`. A verified quote still checks the bytes in the file, and the signature sentence says this run did not fetch them from chain. A report limitation states that a file PROVEN row is not a fresh chain read.
+
+`pnpm audit` was run again on this checkout (pnpm 10.33.4, Node 22.23.4) against the same lockfile. The vulnerability counts are still 1 critical, 5 high, 5 moderate, 1 low. The advisory table in [SECURITY-AUDIT.md](SECURITY-AUDIT.md) was not rewritten. No dependency was bumped.
+
+The repository was still private. Nothing was published or deployed. `--anchor` is still `skipped`. The local web page gained one sentence on `ironshield.near`. It was not restyled.

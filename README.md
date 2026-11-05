@@ -74,59 +74,29 @@ The report also names the highest rung already on the ladder. That line is not a
 
 Every report prints the same threat-model paragraph. A valid Intel TDX quote proves a TDX-attested registered configuration. It does not prove an honest operator. TEE.fail showed that physical access to DDR5 memory can forge TDX quotes, including quotes that carry a dstack context. See https://tee.fail/.
 
-### Proven for `ac-sandbox.votron.testnet` (live, 2026-11-04)
+### Saved live index for `ac-sandbox.votron.testnet` (2026-11-05)
 
-- The registration quote verifies against the collateral stored in transaction `HczqYXdRBZfyTtnQiPqGRXe3zEhvwHu3hyCUkqMq8VjN`. TCB status at registration (2025-09-27) is UpToDate. Debug bit is clear. Report data is the registering account id.
-- Quote MRTD and RTMR0–RTMR3 equal the registered `tcb_info`. Replaying the event log reproduces RTMR0–RTMR3. `sha256` of the registered app compose equals the compose-hash event `cdfac687…`.
-- Both images are pinned by digest. `get_agent` codehash `2a2f4704…` matches an `approve_codehash` transaction. That codehash is the app image digest, not a TDX measurement.
+`apps/web/data/proof-strip.json` is a live crawl (`source: live`, `generatedAt` `2026-11-05T10:21:06.337Z`). This pass did not re-query NearBlocks, so the counts below are that file, not a new chain read. The 2026-11-04 sample (6 risky, 3 not proven, 9 proven) is older than this index and is not the current strip.
 
-### Not proven
+For `ac-sandbox.votron.testnet` the row is shade-v1, overall RISKY, **10 risky, 4 not proven, 13 proven**. The strip sentence for all seven accounts is `7 agents scanned · 0 proven · 4 match a vulnerable configuration · 3 not proven`. The zero is accounts whose bucket is proven. It is not a count of proven findings, and it is not a clean result.
 
-- Shade v1 has no view of approved TDX measurements. The codehash check does not fill that gap.
-- The pinned image digests are not on `allowed_docker_image_hashes` at `v1.signer` (mainnet) or `v1.signer-prod.testnet`. That list is a different system. See [dreyyyy1/measure](https://github.com/dreyyyy1/measure). Absence is not a judgement of the Shade registration.
-- Glassbox did not observe what the account is executing now. Phala blocks public guest-agent routes by default. A registration is not a live process.
+That crawl is older than the contract, provenance, and freshness rows in the current report. A new live read would include those rows. It was not run here.
 
-### Risky
+Titles on the votron row, copied from that file:
 
-- Fresh collateral from `https://pccs.phala.network` puts the same registered quote at TCB status OutOfDate, with Intel advisory IDs INTEL-SA-01192, INTEL-SA-01245, INTEL-SA-01312, INTEL-SA-01313, and INTEL-SA-01367.
-- The registered configuration matches a vulnerable configuration: no `os-image-hash` event, a `rootfs-hash` event, and `/var/run/tappd.sock`. That is a heuristic for dstack before 0.5, inside the range 0.3.1–0.6.0. It is not an exact version, and it is not a claim that the guest was broken into.
-- `public_logs` is true. Env names `NEAR_SEED_PHRASE` and `ANTHROPIC_API_KEY` look like secrets. Values are not printed. On this registration the values in the compose are `${NAME}` references, not literals.
-- The account has a full-access key, so the registered policy is not locked.
-- Phala's 19 Oct 2026 post-mortem: move to 0.6.1 or 0.5.12 by 19 Nov 2026. From 20 Nov 2026, remaining 0.5.x and 0.6.0 CVMs are auto-upgraded, and 0.3.x is retired with no upgrade path (enterprise excluded). A pre-0.5 heuristic cannot tell those cases apart. Shade v1's codehash approval is not cleared by an OS image change; a 0.3.x guest can still be retired by the operator. On Shade v2, new measurements will not match `get_approved_measurements` until the owner approves them.
+- PROVEN: quote signature verified, QE identity verified, TCB status at registration is UpToDate, quote is not a debug TD, report data binds the registering account, quote measurements match the registered tcb_info, RTMR replay matches, compose hash matches, images are pinned by digest, app codehash is in `approve_codehash` history, no plaintext secret values, images are not debug or dev images, interface is shade-v1.
+- NOT PROVEN: no on-contract list of approved TDX measurements, registered image digests were not on the MPC allowlist, `allowed_envs` was not in the registered configuration, what the account is executing now was not observed.
+- RISKY: access keys can change the account, no encrypted env, a guest-agent socket is mounted, `public_logs` is true, `public_sysinfo` is true, the registered configuration matches a vulnerable configuration, secret-looking env names, the 20 Nov 2026 schedule may apply, advisory IDs are attached, TCB is now OutOfDate.
+
+Evidence labels on that row include registration transaction `HczqYXdRBZfyTtnQiPqGRXe3zEhvwHu3hyCUkqMq8VjN`, `/var/run/tappd.sock`, `NEAR_SEED_PHRASE` and `ANTHROPIC_API_KEY` (name only), and advisory IDs INTEL-SA-01192, INTEL-SA-01245, INTEL-SA-01312, INTEL-SA-01313, and INTEL-SA-01367. Values are not in the file. The vulnerable-configuration title is the registered-configuration heuristic. The offline capture of the same registration has no `os-image-hash` event, a `rootfs-hash` event, and `tappd.sock`. That is not an exact dstack version.
+
+The redacted capture `packages/core/test/fixtures/votron-registration.json` is a different report. Audited offline on this checkout with the report clock set to `2026-11-05T12:00:00.000Z`, it printed **8 risky, 10 not proven, 14 proven**. Fresh collateral is not fetched for a file, so `tdx.fresh` stayed NOT PROVEN ("TCB status now was not checked") and `tdx.advisories` stayed PROVEN ("No advisory IDs were returned") on the stored collateral. `tdx.registration` stayed PROVEN (UpToDate). `dstack.range` stayed RISKY (matches a vulnerable configuration). The capture's registration time in that report is 2025-09-27. Do not quote the file counts as the live index.
 
 Source for the guest-agent issue: https://phala.com/posts/2026-10-post-mortem-dstack-guest-agent-vulnerability
 
 ## Sample
 
-`pnpm --filter cli start ac-sandbox.votron.testnet` printed this shape on 2026-11-04 (the command prints every finding; this is the head of that report):
-
-```
-Glassbox report
-Target:     ac-sandbox.votron.testnet
-Network:    testnet
-Interface:  shade-v1
-
-Summary: 6 risky, 3 not proven, 9 proven.
-This report describes the registered configuration. It does not establish what the account is executing now.
-
-RISKY
-1. Access keys can change or broadly call the account
-   Full-access key ed25519:F7jZEsyZ2kr8qCddBY2F44DryGMFDy5i4xkkMMDu9Fep. ...
-5. 20 Nov 2026 auto-upgrade or v0.3.x retirement may apply
-   ... Marked as an inference.
-6. Fresh collateral TCB status is OutOfDate
-   ... Advisory IDs: INTEL-SA-01192, INTEL-SA-01245, INTEL-SA-01312, INTEL-SA-01313, INTEL-SA-01367.
-
-NOT PROVEN
-1. No on-contract list of approved TDX measurements
-3. What the account is executing now was not observed
-
-PROVEN
-8. Registration quote verifies
-   The registration quote verifies. TCB status at registration (2025-09-27T03:54:14.000Z) is UpToDate.
-
-Powered by Nearblocks.io APIs.
-```
+The live shape to cite is the saved index above: shade-v1, overall RISKY, 10 risky, 4 not proven, 13 proven, with `Powered by Nearblocks.io APIs.` in that file. `pnpm --filter cli start ac-sandbox.votron.testnet` still reads the chain. This pass did not run it, and a run on the current report would also print the contract, provenance, and freshness rows that the 10:21 index does not list.
 
 ## Signed reports
 
@@ -145,7 +115,7 @@ The first `--sign` creates a key at `~/.config/glassbox/report-signing-key.pem` 
 
 Fresh collateral, access keys, and the MPC allowlists can change after the report is signed. Verify leaves those as they were signed and recomputes the registration checks.
 
-Anchoring the report hash on NEAR is designed and not enabled. `--sign` already hashes the canonical report body with sha256. A later opt-in would submit that 32-byte hash in a function call on a contract the operator chooses, and the operator would pay the gas. This build does not build that call, does not load a NEAR signer, and does not spend gas. `--anchor` and `GLASSBOX_ANCHOR=1` only record that you asked. The status stays `skipped`. No account is required today.
+Anchoring the report hash on NEAR is a stub. `--sign` already hashes the canonical report body with sha256. `--anchor` and `GLASSBOX_ANCHOR=1` only record that you asked. The status stays `skipped`. This build does not build a Glassbox contract, does not build that call, does not load a NEAR signer, and does not spend gas. No account is required today. A live anchor is out of this submission.
 
 ## Diff
 
@@ -160,48 +130,29 @@ node packages/cli/bin/glassbox.js diff packages/core/test/fixtures/diff-left.jso
 
 Do install it for an agent owner — see `packages/mcp/README.md` for Claude Desktop and Cursor snippets.
 
-`check_agent` takes a NEAR account or pasted JSON. It returns the same ladder as JSON, a one-sentence summary, and `overall` (the highest rung). Stdio transport. From this repo, before the package is published:
+`check_agent` takes a NEAR account or pasted JSON. It returns the same ladder as JSON, a one-sentence summary, and `overall` (the highest rung). Stdio transport. Run it from this checkout:
 
 ```bash
 node packages/mcp/bin/glassbox-mcp.js
 ```
 
-The package is not on npm yet. Do not publish it from this repo unless you mean to. After it is published, the one-liner is:
+Publishing `glassbox-mcp` to npm is not part of this submission. Do not publish it. The install snippets in `packages/mcp/README.md` point at `node` and this repo's bin. There is no `npx glassbox-mcp` path to follow here.
 
-```bash
-npx -y glassbox-mcp
-```
+`check_agent` accepts a NEAR account id or JSON text. It refuses a URL, and it refuses a caller-supplied collateral host. A burst of calls in one process is limited to about six a minute. A pasted JSON report says the file supplied the compared values. A verified quote in that file is a check of those bytes, not a fresh chain read.
 
-Cursor (`.cursor/mcp.json`) and Claude Desktop, once the package is published:
-
-```json
-{
-  "mcpServers": {
-    "glassbox": {
-      "command": "npx",
-      "args": ["-y", "glassbox-mcp"]
-    }
-  }
-}
-```
-
-From this checkout, before that publish, point the command at `node` and `packages/mcp/bin/glassbox-mcp.js`. The same JSON shape is in `packages/mcp/README.md`.
-
-`check_agent` accepts a NEAR account id or JSON text. It refuses a URL, and it refuses a caller-supplied collateral host. A burst of calls in one process is limited to about six a minute.
-
-A live `check_agent` on `ac-sandbox.votron.testnet` on 2026-11-04 returned `overall: RISKY`, shade v1, 6 risky / 3 not proven / 9 proven, and an approval-history list of `approve_codehash` calls dated from August 2025. No `remove_codehash` calls were in the index. The response includes `Powered by Nearblocks.io APIs.`
+This pass did not call `check_agent` against the network. The saved live index for `ac-sandbox.votron.testnet` (same file as the sample) is overall RISKY, shade-v1, 10 risky / 4 not proven / 13 proven, and it includes `Powered by Nearblocks.io APIs.` That index is not a new MCP session.
 
 ## Compose check
 
 [![Glassbox check](https://img.shields.io/badge/glassbox%20check-local%20compose-2ea44f)](https://github.com/Adelekejr/Glassbox/blob/main/.github/workflows/compose-hygiene.yml)
 
-There is no hosted report API, so the badge above is a static shields.io image. After the workflow is on the default branch of a public repo, a status badge can use:
+There is no hosted report API, so the badge above is a static shields.io image. The GitHub repository is still private, so a live Actions status badge is not available yet. After the repository is made public for submission, and this workflow is on the default branch, a status badge can use:
 
 ```
 https://img.shields.io/github/actions/workflow/status/Adelekejr/Glassbox/compose-hygiene.yml?branch=main&label=glassbox%20check
 ```
 
-The Action runs `glassbox check fixtures/compose/pinned.json --fail-on risky`. That file is a pinned compose. It does not call a chain. The job fails when the audit has a risky finding. `fixtures/compose/loose.json` is the example that fails the gate (unpinned image, public logs, a socket mount).
+The Action runs `glassbox check fixtures/compose/pinned.json --fail-on risky`. That file is a pinned compose. It does not call a chain. The job fails when the audit has a risky finding. `fixtures/compose/loose.json` is the example that fails the gate (unpinned image, public logs, a socket mount). The same workflow also runs `pnpm test` on pull requests and pushes. That script runs the package tests and `pnpm run typecheck`. The compose gate is unchanged.
 
 ```bash
 node packages/cli/bin/glassbox.js check fixtures/compose/pinned.json --fail-on risky
@@ -209,7 +160,7 @@ node packages/cli/bin/glassbox.js check fixtures/compose/pinned.json --fail-on r
 
 ## Proof strip
 
-The web form shows one line: how many agents were scanned, how many are proven, how many match a vulnerable configuration, and how many are not proven. Not proven is not a clean result.
+The web form shows one line from the saved live index: `7 agents scanned · 0 proven · 4 match a vulnerable configuration · 3 not proven` (`generatedAt` `2026-11-05T10:21:06.337Z`). The zero is accounts in the proven bucket. Not proven is not a clean result. An account that is risky only because of its keys is counted in not proven on that line. The row's own ladder is the full result.
 
 Rebuild it from the local fixtures (no NearBlocks calls):
 
@@ -237,7 +188,7 @@ node packages/cli/bin/glassbox.js verify report.json
 
 ## Web
 
-Do run the form locally — see `pnpm --filter web dev`. Paste an account (the hint names testnet or mainnet from the suffix) or JSON. The page POSTs to `/api/audit`, which calls the core library. The top of the page is the proof strip. Styling is plain on purpose. Do not deploy it in this repo state.
+Do run the form locally — see `pnpm --filter web dev`. Paste an account (the hint names testnet or mainnet from the suffix) or JSON. The page POSTs to `/api/audit`, which calls the core library and does not read local files. One process accepts 10 audits per rolling minute, then HTTP 429. That cap resets on restart and is not shared across instances. The route stays on localhost until a deliberate deploy. This submission does not deploy it. The top of the page is the proof strip. Styling is plain on purpose.
 
 ## Shade v2
 
@@ -286,13 +237,23 @@ MPC allowlists: view `allowed_docker_image_hashes` on `v1.signer` (mainnet) and 
 | `worker.outlayer.testnet` | `get_approved_measurements`. Not Shade v2 (`get_contract_info` is absent). RTMR1 `a7b52327…` is in neither Shade table. |
 | `v1.signer-prod.testnet` and `v1.signer` | MPC docker allowlists. Two hashes each; one hash expires 5 Nov 2026 (testnet) and 6 Nov 2026 (mainnet). |
 | `reflect-adam-mainnet-agent-contract.near` | Mainnet demo account. `.near` selects mainnet. |
-| `ironshield.near` | Mainnet demo account. `.near` selects mainnet. |
+| `ironshield.near` | Mainnet. Shade v2 interface in the saved live index. That row loaded no registration quote (`No registration quote was loaded`) and did not load approved measurements (`Approved measurements were not loaded`). Those checks stay NOT PROVEN. The only PROVEN row on it is the interface itself. Overall RISKY because of a full-access key (1 proven, 6 not proven, 1 risky). |
 
-No test account found here is Shade v2. A v2 report needs `get_contract_info` / `get_approved_measurements` from a deployment the owner accepts, or from the framework's local sandbox. The account the notes call "1prime" was not located.
+`ironshield.near` is the Shade v2 interface in that index. It is not a verified v2 TEE registration: no quote, and approved measurements were not loaded. The local sandbox test is still the path that approves measurements and compares them. That sandbox uses the all-zero local-mode default, which is not a TDX measurement. The account the notes call "1prime" was not located.
 
 ## Gideon
 
-Gideon is a NEAR pre-send safety checker by the same builder (Adelekejr). Hackathon screening question Q-015 asks for that sibling to be named. Glassbox audits how an agent was registered and which keys can change the account. Gideon is the tool that checks a payment before it is sent. They do not share a verdict.
+Gideon is the sibling project by the same builder (Adelekejr). It is a NEAR pre-send safety checker. The public repository is [https://github.com/Adelekejr/Gideon-near](https://github.com/Adelekejr/Gideon-near). Gideon names Glassbox as the registration auditor.
+
+Hackathon screening question Q-015 asks for that sibling to be named.
+
+Glassbox answers what was registered, whether the quote verifies, and who can change it. Gideon checks a payment before it is sent. They do not share a verdict. Glassbox does not add a payment or send screen. That work stays in Gideon.
+
+## Repository
+
+Glassbox is still private on GitHub. It will be made public for submission. Do not describe the repository as public until that change is made. This pass does not change visibility.
+
+TODO: make the repository public before the hackathon submission. A public repo is required to submit. This file does not claim that step is done.
 
 ## Licence
 
