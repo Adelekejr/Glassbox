@@ -86,7 +86,7 @@ Work on `cursor/…` branches off `main`. Keep commits small. MCP `check_agent` 
 
 1. A real Shade v2 TEE registration (not local-mode zeros, and not the ironshield row that loaded no quote) if the owner accepts a deploy. The sandbox path only proves the interface and the approved-list compare. `requires_tee: true` still needs a quote Glassbox can verify; v2 does not store the raw quote, so history or a paste is still required for TCB status.
 2. Optional measurement work: dstack-mr can hash older images (0.5.0–0.5.11, 0.6.0). Until those hashes are reproduced, leave them out of the fixed list. A reproduced vulnerable hash may be added as a known non-fixed image, with the source, and the sentence stays "not a known fixed image" or "matches a vulnerable configuration".
-3. Hackathon items that are not code. The repository is still private. It will be made public for submission. TODO: change visibility before submit. Do not write that it is already public. The user posts on X with `@NEARProtocol` and `#NEARHackathon`, the user creates the mainnet payout account, and the submission POST waits for the user to confirm the payload. Deadline cited in the notes: 2026-11-14T23:59Z. Do not post, publish, or submit on the user's behalf. Restyle of `apps/web` is a separate track.
+3. Hackathon items that are not code. The repository is public at https://github.com/Adelekejr/Glassbox. The user posts on X with `@NEARProtocol` and `#NEARHackathon`, the user creates the mainnet payout account, and the submission POST waits for the user to confirm the payload. Deadline cited in the notes: 2026-11-14T23:59Z. Do not post, publish, or submit on the user's behalf. Restyle of `apps/web` is a separate track.
 
 ## Files worth opening first
 

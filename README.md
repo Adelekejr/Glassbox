@@ -144,13 +144,9 @@ This pass did not call `check_agent` against the network. The saved live index f
 
 ## Compose check
 
-[![Glassbox check](https://img.shields.io/badge/glassbox%20check-local%20compose-2ea44f)](https://github.com/Adelekejr/Glassbox/blob/main/.github/workflows/compose-hygiene.yml)
+[![Glassbox check](https://img.shields.io/github/actions/workflow/status/Adelekejr/Glassbox/compose-hygiene.yml?branch=main&label=glassbox%20check)](https://github.com/Adelekejr/Glassbox/actions/workflows/compose-hygiene.yml)
 
-There is no hosted report API, so the badge above is a static shields.io image. The GitHub repository is still private, so a live Actions status badge is not available yet. After the repository is made public for submission, and this workflow is on the default branch, a status badge can use:
-
-```
-https://img.shields.io/github/actions/workflow/status/Adelekejr/Glassbox/compose-hygiene.yml?branch=main&label=glassbox%20check
-```
+The workflow runs on `main`. There is no hosted report API.
 
 The Action runs `glassbox check fixtures/compose/pinned.json --fail-on risky`. That file is a pinned compose. It does not call a chain. The job fails when the audit has a risky finding. `fixtures/compose/loose.json` is the example that fails the gate (unpinned image, public logs, a socket mount). The same workflow also runs `pnpm test` on pull requests and pushes. That script runs the package tests and `pnpm run typecheck`. The compose gate is unchanged.
 
@@ -251,9 +247,7 @@ Glassbox answers what was registered, whether the quote verifies, and who can ch
 
 ## Repository
 
-Glassbox is still private on GitHub. It will be made public for submission. Do not describe the repository as public until that change is made. This pass does not change visibility.
-
-TODO: make the repository public before the hackathon submission. A public repo is required to submit. This file does not claim that step is done.
+Glassbox is public at [https://github.com/Adelekejr/Glassbox](https://github.com/Adelekejr/Glassbox).
 
 ## Licence
 

@@ -2,7 +2,7 @@
 
 Date: 2026-11-05. Scope: the squash of PR #6, commit `18b276d4d584b7a2b63fa32e914d415cbc7d1fc9` ("Add threat model, provenance, contract checks, diff, and an anchor stub"), reviewed against `b23ad39` (PR #5). Surfaces: threat-model paragraph, measurement provenance, contract checks, `glassbox diff`, freshness (including the optional Phala probe), and the `--anchor` / `GLASSBOX_ANCHOR=1` stub, plus a re-check of the PR #3 fixes in [SECURITY-AUDIT.md](SECURITY-AUDIT.md).
 
-The site was not restyled. The repository was left private. Nothing was published, deployed, or signed on NEAR. No NEAR private key was loaded. No transaction was sent. Anchor remains a no-op.
+The site was not restyled. This pass did not change repository visibility. Nothing was published, deployed, or signed on NEAR. No NEAR private key was loaded. No transaction was sent. Anchor remains a no-op.
 
 ## How this was checked
 
@@ -101,4 +101,4 @@ Open item 1 (a pasted JSON `code_hash` or `os_image_hash` can be PROVEN without 
 
 `pnpm audit` was run again on this checkout (pnpm 10.33.4, Node 22.23.4) against the same lockfile. The vulnerability counts are still 1 critical, 5 high, 5 moderate, 1 low. The advisory table in [SECURITY-AUDIT.md](SECURITY-AUDIT.md) was not rewritten. No dependency was bumped.
 
-The repository was still private. Nothing was published or deployed. `--anchor` is still `skipped`. The local web page gained one sentence on `ironshield.near`. It was not restyled.
+This note did not change repository visibility. Nothing was published or deployed. `--anchor` is still `skipped`. The local web page gained one sentence on `ironshield.near`. It was not restyled. Glassbox is public at https://github.com/Adelekejr/Glassbox.
