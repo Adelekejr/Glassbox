@@ -226,16 +226,28 @@ export const AUTO_UPGRADE_AT = Date.parse("2026-11-20T00:00:00.000Z");
 
 export function accountUrl(network: Network, accountId: string): string {
   const host = network === "mainnet" ? "https://nearblocks.io" : "https://testnet.nearblocks.io";
-  return `${host}/address/${accountId}`;
+  return `${host}/address/${encodeURIComponent(accountId)}`;
 }
 
 export function txUrl(network: Network, hash: string): string {
   const host = network === "mainnet" ? "https://nearblocks.io" : "https://testnet.nearblocks.io";
-  return `${host}/txns/${hash}`;
+  return `${host}/txns/${encodeURIComponent(hash)}`;
 }
 
 export function advisoryUrl(id: string): string {
-  return `https://www.intel.com/content/www/us/en/security-center/advisory/${id.toLowerCase()}.html`;
+  return `https://www.intel.com/content/www/us/en/security-center/advisory/${encodeURIComponent(id.toLowerCase())}.html`;
+}
+
+/** Date.parse / toISOString throw outside this range. Chain timestamps are untrusted. */
+const MAX_DATE_MS = 8.64e15;
+
+export function isoFromUnixMs(ms: number): string | undefined {
+  if (!Number.isFinite(ms) || Math.abs(ms) > MAX_DATE_MS) return undefined;
+  try {
+    return new Date(ms).toISOString();
+  } catch {
+    return undefined;
+  }
 }
 
 export function detectNetwork(accountId: string): Network | null {
@@ -245,14 +257,19 @@ export function detectNetwork(accountId: string): Network | null {
   return null;
 }
 
+function finiteSeconds(value: number): number | undefined {
+  return Number.isFinite(value) ? value : undefined;
+}
+
 export function nsToSeconds(ns: string | number | bigint | undefined | null): number | undefined {
   if (ns === undefined || ns === null) return undefined;
-  if (typeof ns === "bigint") return Number(ns / 1_000_000_000n);
-  if (typeof ns === "string" && /^\d+$/.test(ns)) {
-    return Number(BigInt(ns) / 1_000_000_000n);
+  if (typeof ns === "bigint") return finiteSeconds(Number(ns / 1_000_000_000n));
+  // Longer than this is not a real nanosecond timestamp and can be a memory sink.
+  if (typeof ns === "string" && /^\d{1,20}$/.test(ns)) {
+    return finiteSeconds(Number(BigInt(ns) / 1_000_000_000n));
   }
   if (typeof ns === "number" && Number.isFinite(ns)) {
-    return Math.round(ns / 1e9);
+    return finiteSeconds(Math.round(ns / 1e9));
   }
   return undefined;
 }

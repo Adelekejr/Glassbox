@@ -5,13 +5,14 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { assessAccessKeys } from "../src/checks/access-keys.js";
 import { assessDstack, versionInVulnerableRange } from "../src/checks/dstack.js";
+import { formatExpiry } from "../src/checks/mpc.js";
 import { replayRtmr } from "../src/checks/rtmr.js";
 import { hardwareAndOSMeasurements } from "../src/data/shade-measurements.js";
 import { matchShadeMeasurements } from "../src/data/shade-measurements.js";
 import { classifyImage, isSecretEnvName, parseCompose, sha256Hex } from "../src/evidence/compose.js";
 import { auditValue } from "../src/audit.js";
 import { buildReport, formatReport } from "../src/report.js";
-import type { EventLogEntry } from "../src/types.js";
+import { accountUrl, advisoryUrl, type EventLogEntry } from "../src/types.js";
 
 const fixturePath = join(dirname(fileURLToPath(import.meta.url)), "fixtures/votron-registration.json");
 const fixture = JSON.parse(readFileSync(fixturePath, "utf8")) as {
@@ -294,4 +295,43 @@ test("image pins, secret names, and access keys", () => {
   const parsed = parseCompose("services:\n  app:\n    image: nginx:1.25\n");
   assert.equal(parsed?.images[0]?.pinned, false);
   assert.equal(parsed?.images[0]?.tag, "1.25");
+});
+
+test("a quote that does not verify is not marked proven", async () => {
+  const copy = JSON.parse(readFileSync(fixturePath, "utf8")) as Record<string, unknown>;
+  copy.collateral = { not: "collateral" };
+  const report = await auditValue(copy, { now: FROZEN, label: "bad-collateral" });
+  const byId = Object.fromEntries(report.findings.map((finding) => [finding.id, finding]));
+  assert.equal(byId["tdx.registration"].ladder, "NOT_PROVEN");
+  assert.equal(byId["tdx.debug"].ladder, "NOT_PROVEN");
+  assert.equal(byId["tdx.report_data"].ladder, "NOT_PROVEN");
+  assert.equal(byId["measurements.quote_match"].ladder, "NOT_PROVEN");
+  assert.doesNotMatch(byId["measurements.quote_match"].plainEnglish, /verified quote/i);
+  assert.doesNotMatch(formatReport(report), /hacked/i);
+});
+
+test("malformed quote hex and an unreadable timestamp do not throw", async () => {
+  const odd = JSON.parse(readFileSync(fixturePath, "utf8")) as Record<string, unknown>;
+  odd.quoteHex = "abc";
+  const oddReport = await auditValue(odd, { now: FROZEN });
+  assert.equal(oddReport.findings.find((finding) => finding.id === "tdx.registration")?.ladder, "NOT_PROVEN");
+
+  const huge = JSON.parse(readFileSync(fixturePath, "utf8")) as Record<string, unknown>;
+  huge.blockTimestampNs = "9".repeat(80);
+  const hugeReport = await auditValue(huge, { now: FROZEN });
+  assert.ok(hugeReport.findings.length > 0);
+  assert.equal(formatExpiry({ image_hash: "ab", expiry_timestamp_seconds: 1e20 }), "unreadable expiry");
+});
+
+test("evidence links keep their host when the id contains URL characters", () => {
+  for (const id of ["INTEL-SA-01192", "../x", "https://evil.example"]) {
+    assert.equal(new URL(advisoryUrl(id)).host, "www.intel.com");
+  }
+  assert.equal(
+    advisoryUrl("INTEL-SA-01192"),
+    "https://www.intel.com/content/www/us/en/security-center/advisory/intel-sa-01192.html",
+  );
+  const account = new URL(accountUrl("testnet", "acct.testnet/../../evil.example"));
+  assert.equal(account.host, "testnet.nearblocks.io");
+  assert.match(account.pathname, /%2F/);
 });

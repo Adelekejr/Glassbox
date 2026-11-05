@@ -17,7 +17,11 @@ server.registerTool(
     inputSchema: {
       target: z
         .string()
-        .describe("NEAR account id (ac-sandbox.votron.testnet) or a JSON document. A .testnet or .near suffix selects the network."),
+        .min(1)
+        .max(2_000_000)
+        .describe(
+          "NEAR account id (ac-sandbox.votron.testnet), pasted JSON, or a local .json file. Other local paths are rejected. A .testnet or .near suffix selects the network.",
+        ),
       network: z.enum(["testnet", "mainnet"]).optional().describe("Override network detection."),
     },
   },

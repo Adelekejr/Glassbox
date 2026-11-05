@@ -1,4 +1,4 @@
-import type { MpcAllowlist, MpcHashEntry } from "../types.js";
+import { isoFromUnixMs, type MpcAllowlist, type MpcHashEntry } from "../types.js";
 
 /** Public views named in the day-1 scope. v1.signer is a top-level mainnet account. */
 export const MPC_TARGETS = [
@@ -15,7 +15,7 @@ export function formatExpiry(entry: MpcHashEntry): string {
   if (entry.expiry_timestamp_seconds === null || entry.expiry_timestamp_seconds === undefined) {
     return "no expiry";
   }
-  return new Date(entry.expiry_timestamp_seconds * 1000).toISOString();
+  return isoFromUnixMs(entry.expiry_timestamp_seconds * 1000) ?? "unreadable expiry";
 }
 
 export function matchingDigests(digests: string[], lists: MpcAllowlist[]): { digest: string; list: MpcAllowlist; entry: MpcHashEntry }[] {
