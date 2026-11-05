@@ -26,16 +26,27 @@ export function assessAccessKeys(keys: AccessKeyView[] | undefined, error?: stri
       continue;
     }
     if (permission && typeof permission === "object" && "FunctionCall" in permission) {
-      const call = permission.FunctionCall;
-      const methods = call.method_names ?? [];
+      const call = permission.FunctionCall as { allowance?: unknown; receiver_id?: unknown; method_names?: unknown } | null;
+      if (!call || typeof call !== "object" || !Array.isArray(call.method_names)) {
+        reasons.push(`Function-call key ${id} could not be read.`);
+        continue;
+      }
+      const methods = call.method_names.filter((name): name is string => typeof name === "string");
+      if (methods.length !== call.method_names.length) {
+        reasons.push(`Function-call key ${id} could not be read.`);
+        continue;
+      }
+      const receiver = typeof call.receiver_id === "string" ? call.receiver_id : "";
       if (methods.length === 0) {
         reasons.push(
-          `Function-call key ${id} allows any method on ${call.receiver_id || "its receiver"} because method_names is empty.`,
+          `Function-call key ${id} allows any method on ${receiver || "its receiver"} because method_names is empty.`,
         );
       }
       if (call.allowance === null || call.allowance === undefined) {
         reasons.push(`Function-call key ${id} has an unlimited gas allowance.`);
       }
+    } else {
+      reasons.push(`Access key ${id} could not be read.`);
     }
   }
   if (reasons.length > 0) return { ladder: "RISKY", reasons };

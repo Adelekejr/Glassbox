@@ -137,6 +137,8 @@ test("votron measurements are not in the Shade 0.5.7 or 0.5.8 tables", () => {
   const match = matchShadeMeasurements(row);
   assert.equal(match?.version, "0.5.8");
   assert.equal(match?.instanceType, "tdx.small");
+  assert.equal(match?.mrtdMatched, true);
+  assert.equal(matchShadeMeasurements({ ...row, mrtd: "ab".repeat(48) })?.mrtdMatched, false);
   for (const version of ["0.5.7", "0.5.8"] as const) {
     for (const instance of Object.values(hardwareAndOSMeasurements[version])) {
       for (const value of Object.values(instance.rtmrs)) {

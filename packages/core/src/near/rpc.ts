@@ -144,7 +144,7 @@ export class NearClient {
     if (!result) return { ok: true, value: null };
     if (result.error) {
       const message = String(result.error);
-      if (message.includes("MethodNotFound")) {
+      if (isHostMethodNotFound(message)) {
         return { ok: false, reason: "method_not_found", message };
       }
       return { ok: false, reason: "execution_error", message };
@@ -193,4 +193,13 @@ function readAccountId(params: unknown): string {
 
 export function methodExists(view: ViewResult): boolean {
   return view.ok || view.reason === "execution_error";
+}
+
+/**
+ * Host MethodResolveError means the method is not on the account.
+ * A guest panic whose message contains the same words means the method ran.
+ */
+export function isHostMethodNotFound(message: string): boolean {
+  if (/GuestPanic|panic_msg/i.test(message)) return false;
+  return /MethodResolveError\(MethodNotFound\)/.test(message) || message.trim() === "MethodNotFound";
 }
