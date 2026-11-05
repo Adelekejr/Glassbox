@@ -1,12 +1,12 @@
 # Handoff — Glassbox day 2
 
-Written 2026-11-04 so another session can continue without re-deriving the rules.
+Written 2026-11-04 so another session can continue without re-deriving the rules. Counts and submit scope were checked on 2026-11-05 against `apps/web/data/proof-strip.json` and an offline audit of the votron capture. The live index was not crawled again.
 
 ## Done
 
 - pnpm workspace. `packages/core` is the library. `packages/cli` is `glassbox <account|file>` (`pnpm --filter cli start …`, human text, or `--json`).
-- `packages/mcp` (`glassbox-mcp`) is a stdio MCP server. Tool `check_agent` returns `{ overall, summary, report }`. See `packages/mcp/README.md` for Claude Desktop and Cursor config. Not published to npm yet; local install uses `node --import tsx`.
-- `apps/web` is a plain Next.js form. `pnpm --filter web dev`. POST `/api/audit` accepts a NEAR account id or JSON text and does not read local files (`auditTarget` does, so the route must not call it). Do not deploy. Restyle `components/Ladder.tsx` and `components/AuditForm.tsx` later. Next needs `extensionAlias` in `next.config.ts` so core's `.js` imports resolve to `.ts`.
+- `packages/mcp` (`glassbox-mcp`) is a stdio MCP server. Tool `check_agent` returns `{ overall, summary, report }`. See `packages/mcp/README.md` for Claude Desktop and Cursor config. It is not published to npm. Do not publish it for this submission. Local install uses `node` and `packages/mcp/bin/glassbox-mcp.js`.
+- `apps/web` is a plain Next.js form. `pnpm --filter web dev`. POST `/api/audit` accepts a NEAR account id or JSON text and does not read local files (`auditTarget` does, so the route must not call it). One process accepts 10 audits per rolling minute, then HTTP 429. That cap is not a deploy control. Keep the route on localhost until a deliberate deploy. Do not deploy in this submission. Restyle is a separate track: leave `components/Ladder.tsx` and `components/AuditForm.tsx` alone here. Next needs `extensionAlias` in `next.config.ts` so core's `.js` imports resolve to `.ts`.
 - Shade v2: `get_approved_measurements` rows may be nested `{ rtmrs, key_provider_event_digest, app_compose_hash_payload }`. `get_agents` fills `v2Agents`. A match is PROVEN. All-zero rows are the local-mode default and are RISKY (`measurements.local_default`), not a TDX measurement. `requires_tee: false` is stated in the interface sentence.
 - Local sandbox test: `packages/core/test/shade-v2.sandbox.test.ts` plus `fixtures/shade-contract-template.wasm` (Apache-2.0, framework commit 35758f3). Uses `near-sandbox` 0.3.x (neard 2.13) and `near-api-js`. The test passes `finality: "optimistic"` because a one-node sandbox has not finalized the latest block. Public audits stay on `final`. No testnet transaction.
 - Approval history is an on-demand section, cached in memory for 10 minutes (`GLASSBOX_HISTORY_CACHE_MS`). v1 reads `approve_codehash` and `remove_codehash`. v2 reads `approve_measurements`, `remove_measurements`, `approve_ppids`, `remove_ppids`. Not a watcher. NearBlocks attribution still required.
@@ -21,8 +21,11 @@ Written 2026-11-04 so another session can continue without re-deriving the rules
   - `allowed_docker_image_hashes` → mpc-signer
 - Registration arguments come from `register_agent` / `register_worker` history, then the archival `tx` body. v1 codehash approval comes from `approve_codehash` history plus `get_agent`.
 - Checks that are live for votron: TDX verify at the registration timestamp and again against fresh Phala PCCS collateral (`@phala/dcap-qvl` 0.7.1), debug bit, report-data binding, quote vs `tcb_info`, RTMR replay, compose-hash, image digest pins, dstack range, `public_logs`, secret-looking env names, the 20 Nov 2026 schedule, access keys, and the two MPC allowlists.
-- `pnpm test` passes (fixture unit tests, RPC client tests, CLI test, `tsc`). `pnpm --filter cli start ac-sandbox.votron.testnet` prints a real report. On 2026-11-04 that report was 6 risky, 3 not proven, 9 proven, including UpToDate at registration and OutOfDate on fresh collateral with INTEL-SA-01192 / 01245 / 01312 / 01313 / 01367.
-- `pnpm smoke` completed on the eight public targets: votron, ajitesh-1, and nova-shade-agent are shade-v1; both leo-leo-leo accounts are shade-v1-worker (the proxy had no successful registration in the index); `worker.outlayer.testnet` is a measurements registry; both signer accounts are mpc-signers. `v1.signer` did not flag a full-access key.
+- `pnpm test` is the offline bar (fixture unit tests, RPC client tests, CLI, MCP, web lib tests, and `pnpm run typecheck`). CI runs that script and keeps the compose-hygiene gate. Do not treat a green test run as a new live crawl.
+- Saved live index `apps/web/data/proof-strip.json` (`source: live`, `generatedAt` `2026-11-05T10:21:06.337Z`): 7 agents scanned, 0 in the proven bucket, 4 match a vulnerable configuration, 3 not proven. `ac-sandbox.votron.testnet` on that row is shade-v1, overall RISKY, 10 risky, 4 not proven, 13 proven, including UpToDate at registration and OutOfDate on fresh collateral with INTEL-SA-01192 / 01245 / 01312 / 01313 / 01367. The 2026-11-04 count (6 / 3 / 9) is stale. That crawl does not include the later contract, provenance, and freshness rows. It was not re-run in the honesty pass.
+- Offline capture `packages/core/test/fixtures/votron-registration.json`, audited on this checkout with the clock set to `2026-11-05T12:00:00.000Z`: 8 risky, 10 not proven, 14 proven. No fresh collateral, so TCB-now stays NOT PROVEN. Do not quote those counts as the live index.
+- `ironshield.near` in that same live index is a Shade v2 interface loaded without a registration quote and without approved measurements. Those two checks stay NOT PROVEN. Overall RISKY is the full-access key (1 proven, 6 not proven, 1 risky). It is not a verified v2 TEE registration.
+- `pnpm smoke` completed on the eight public targets before this index: votron, ajitesh-1, and nova-shade-agent are shade-v1; both leo-leo-leo accounts are shade-v1-worker (the proxy had no successful registration in the index); `worker.outlayer.testnet` is a measurements registry; both signer accounts are mpc-signers. `v1.signer` did not flag a full-access key. Smoke was not re-run in the honesty pass.
 
 ## Wording rules (do not relax these)
 
@@ -31,8 +34,9 @@ Written 2026-11-04 so another session can continue without re-deriving the rules
 - Mark inferences. The pre-0.5 tappd.sock pattern is an inference. A Shade 0.5.7/0.5.8 table hit is a comparison with the published table, not a measurement Glassbox computed. An unknown `os_image_hash` is "not a known fixed image", and the fixed list can lag a newer release.
 - Do not mark a declared `dstack_version` of 0.5.12 or 0.6.1 as a proven fixed image. PROVEN "fixed image" requires an `os_image_hash` on the fixed list. When a hash is present, it is the comparison; the declared string does not replace it.
 - Do not print env values. A plaintext secret is the key name plus the first 4 hex characters of `sha256(value)`. Never the value. Names and `${NAME}` references are not plaintext.
-- Do not score payments. If a method is `pay_by_agent` or similar, leave it alone. Gideon owns that question.
-- NOT PROVEN is not a clean bill of health. Do not turn a missing view into "safe".
+- Do not score payments. If a method is `pay_by_agent` or similar, leave it alone. Gideon owns that question. Public repo: https://github.com/Adelekejr/Gideon-near
+- A file or pasted JSON PROVEN row compares values in that input, or verifies a quote carried in it. When the check would otherwise name `get_agent`, `view_account`, or `view_access_key_list`, the sentence says the file supplied the value. That row is not a fresh chain read.
+- NOT PROVEN is not a clean bill of health. Do not turn a missing view into "safe". Do not write that the agent is safe now.
 - When NearBlocks is called, the report must contain the line `Powered by Nearblocks.io APIs.`
 
 A test in `packages/core/test/engine.test.ts` fails if a votron report contains "hacked" or "currently running".
@@ -47,7 +51,7 @@ A test in `packages/core/test/engine.test.ts` fails if a votron report contains 
 - Fixed `os_image_hash` values are only the five published 0.5.12 / 0.6.1 variants in `packages/core/src/data/fixed-images.ts`. Do not add older published hashes to that list; those images are inside the vulnerable range. Shade tables in `packages/core/src/data/shade-measurements.ts` are copied from shade-agent-cli (Apache-2.0) and only contain 0.5.7 and 0.5.8. `worker.outlayer.testnet` RTMR1 `a7b52327…` matches neither.
 - `v1.signer` is a mainnet account (parent `signer`, not `signer.near`). `v1.signer.testnet` does not exist. The prod testnet account is `v1.signer-prod.testnet`. One allowlist entry expires 2026-11-05 (testnet) and 2026-11-06 (mainnet). Compare digests; do not treat a miss as a Shade failure.
 - The 20 Nov 2026 text is date-aware via `AUTO_UPGRADE_AT` in `packages/core/src/types.ts`. After that instant the sentence must say the date has passed.
-- No test target here is Shade v2. Do not fake a v2 fixture. A v2 path should use `get_approved_measurements` (mrtd, rtmr0–2, key provider digest, app compose hash payload). OutLayer's view also returns rtmr3 and is classified separately on purpose.
+- `ironshield.near` is a Shade v2 interface in the saved live index, loaded without a quote and without approved measurements. Do not describe that row as a verified TEE registration. Do not fake a v2 quote fixture. A v2 path that compares approvals should use `get_approved_measurements` (mrtd, rtmr0–2, key provider digest, app compose hash payload), as the local sandbox does with the all-zero local-mode default. OutLayer's view also returns rtmr3 and is classified separately on purpose. The sandbox is not a live guest.
 
 ## Secrets
 
@@ -68,15 +72,21 @@ pnpm smoke
 
 FastNEAR tx history (`https://tx.test.fastnear.com/v0/account/<id>` and the mainnet twin) was 404 on 2026-11-04. `packages/core/src/near/history.ts` still tries it and falls through. If it starts returning JSON, teach `parseFastnear` with a real payload rather than removing NearBlocks. Keep the attribution whenever NearBlocks is actually called.
 
-Work on `cursor/…` branches off `main`. Keep commits small. Do not open a hosted deploy, an MCP server, or a web UI inside a drive-by edit; those packages are empty on purpose.
+Work on `cursor/…` branches off `main`. Keep commits small. MCP `check_agent` and the local web form exist. Do not deploy the web app. Do not publish `glassbox-mcp`. Do not add a payment or send UI (that is Gideon). Do not build a Glassbox contract or a live `--anchor`. The anchor stub stays `skipped`.
 
-## Next, in order
+## Out of this submission
 
-1. A real Shade v2 TEE registration (not local-mode zeros) if the owner accepts a deploy. The sandbox path only proves the interface and the approved-list compare. `requires_tee: true` still needs a quote Glassbox can verify; v2 does not store the raw quote, so history or a paste is still required for TCB status.
-2. Publish `glassbox-mcp` if the owner wants `npx glassbox-mcp`. Do not publish without being asked.
-3. Restyle `apps/web` and, only when asked, deploy to Vercel Hobby (personal, non-commercial, no ads).
-4. Optional measurement work: dstack-mr can hash older images (0.5.0–0.5.11, 0.6.0). Until those hashes are reproduced, leave them out of the fixed list. A reproduced vulnerable hash may be added as a known non-fixed image, with the source, and the sentence stays "not a known fixed image" or "matches a vulnerable configuration".
-5. Hackathon items that are not code: the repo has to be public, the user posts on X with `@NEARProtocol` and `#NEARHackathon`, the user creates the mainnet payout account, and the submission POST waits for the user to confirm the payload. Deadline cited in the notes: 2026-11-14T23:59Z. Do not post or submit on the user's behalf.
+- Do not build a Glassbox contract or turn `--anchor` into a transaction. The stub stays `skipped`.
+- Do not publish `glassbox-mcp` to npm.
+- Do not add a payment or send UI. Gideon owns that. Public repo: https://github.com/Adelekejr/Gideon-near
+- Do not write that an agent is safe now. A registration is not a live process. NOT PROVEN is not a pass. Valid quote is not an honest operator.
+- Do not deploy `/api/audit`.
+
+## Next, when asked
+
+1. A real Shade v2 TEE registration (not local-mode zeros, and not the ironshield row that loaded no quote) if the owner accepts a deploy. The sandbox path only proves the interface and the approved-list compare. `requires_tee: true` still needs a quote Glassbox can verify; v2 does not store the raw quote, so history or a paste is still required for TCB status.
+2. Optional measurement work: dstack-mr can hash older images (0.5.0–0.5.11, 0.6.0). Until those hashes are reproduced, leave them out of the fixed list. A reproduced vulnerable hash may be added as a known non-fixed image, with the source, and the sentence stays "not a known fixed image" or "matches a vulnerable configuration".
+3. Hackathon items that are not code. The repository is still private. It will be made public for submission. TODO: change visibility before submit. Do not write that it is already public. The user posts on X with `@NEARProtocol` and `#NEARHackathon`, the user creates the mainnet payout account, and the submission POST waits for the user to confirm the payload. Deadline cited in the notes: 2026-11-14T23:59Z. Do not post, publish, or submit on the user's behalf. Restyle of `apps/web` is a separate track.
 
 ## Files worth opening first
 

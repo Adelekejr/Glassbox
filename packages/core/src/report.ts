@@ -99,8 +99,13 @@ export function buildReport(bundle: EvidenceBundle, options?: { now?: Date; anch
     limitations: [
       "Findings that cite a quote or an app compose describe the registered configuration. They do not establish what the account is executing now.",
       "A valid TDX quote proves a TDX-attested registered configuration. It does not prove an honest operator. See the threat-model paragraph.",
-      "Glassbox does not judge payment correctness. That is Gideon, a separate NEAR pre-send checker by the same builder.",
+      "Glassbox does not judge payment correctness, and it has no payment or send step. That is Gideon (https://github.com/Adelekejr/Gideon-near), a separate NEAR pre-send checker by the same builder.",
       "Comparisons with Shade's 0.5.7/0.5.8 table use that project's published measurements. Heuristics are marked on the finding.",
+      ...(bundle.historySource === "file"
+        ? [
+            "This report was built from a file or pasted JSON. A PROVEN row compares values in that input, or verifies a quote carried in it. It is not a fresh chain read.",
+          ]
+        : []),
     ],
     sources: sourceLines(bundle),
     attribution: attributionLines(bundle),
@@ -327,12 +332,15 @@ function reportDataFinding(bundle: EvidenceBundle, reportData: string | null): F
     return make("tdx.report_data", "NOT_PROVEN", "Quote report data was not read", false, "The quote did not yield report data, so it was not bound to an account.");
   }
   if (agent && reportData === agent) {
+    const bound = fromFile(bundle)
+      ? `the account id recorded in this file. This run did not read that registration from chain.`
+      : `the same account that submitted the registration.`;
     return make(
       "tdx.report_data",
       "PROVEN",
       "Quote report data binds the registering account",
       false,
-      `The quote's report data is the ASCII account id ${agent}, the same account that submitted the registration.`,
+      `The quote's report data is the ASCII account id ${agent}, ${bound}`,
       txEvidence(bundle),
     );
   }
@@ -448,9 +456,10 @@ function composeHashFinding(bundle: EvidenceBundle): Finding {
   const recorded = bundle.registration?.appComposeSha256;
   const redacted = bundle.registration?.appComposeRedacted === true;
   if (recorded && sameHex(recorded, payload)) {
+    const fileNote = fromFile(bundle) ? " This run did not re-read the registration from chain." : "";
     const sentence = redacted
-      ? `The compose-hash event payload equals the sha256 recorded for the on-chain app_compose string (${payload}). Secret-looking values were removed from the local copy, so this match is against the chain string, not against that redacted copy.`
-      : `sha256 of the registered app_compose string equals the compose-hash event payload (${payload}).`;
+      ? `The compose-hash event payload equals the sha256 recorded for the on-chain app_compose string (${payload}). Secret-looking values were removed from the local copy, so this match is against the chain string, not against that redacted copy.${fileNote}`
+      : `sha256 of the registered app_compose string equals the compose-hash event payload (${payload}).${fileNote}`;
     return make("compose.hash", "PROVEN", "Compose hash matches the registered event", false, sentence, txEvidence(bundle));
   }
   if (recorded) {
@@ -575,40 +584,49 @@ function codehashFinding(bundle: EvidenceBundle): Finding {
   const codehash = bundle.agentView?.codehash?.toLowerCase();
   const approved = bundle.approvedCodehashes ?? [];
   const network = bundle.network === "offline" ? "testnet" : bundle.network;
+  const file = fromFile(bundle);
   if (!codehash) {
     return make(
       "codehash.approved",
       "NOT_PROVEN",
       "Agent codehash was not loaded",
       false,
-      "get_agent did not return a codehash, so it was not compared with approve_codehash history.",
+      file
+        ? "The file did not include a codehash, so it was not compared with approve_codehash history. This run did not call get_agent."
+        : "get_agent did not return a codehash, so it was not compared with approve_codehash history.",
     );
   }
   const hit = approved.find((row) => row.codehash.toLowerCase() === codehash);
   if (hit) {
     const evidence: EvidenceLink[] = [
-      { label: "get_agent codehash", detail: codehash },
+      { label: file ? "codehash in the file" : "get_agent codehash", detail: codehash },
     ];
-    if (hit.txHash && bundle.network !== "offline") {
+    if (hit.txHash && bundle.network !== "offline" && !file) {
       evidence.push({ label: "approve_codehash transaction", url: txUrl(network, hit.txHash), detail: hit.txHash });
     } else if (hit.txHash) {
-      evidence.push({ label: "approve_codehash transaction", detail: hit.txHash });
+      evidence.push({ label: file ? "approve_codehash row in the file" : "approve_codehash transaction", detail: hit.txHash });
     }
+    const sentence = file
+      ? `The file records codehash ${codehash}, and an approve_codehash row in that file has the same value. This run did not call get_agent or re-read that transaction. On Shade v1 this is the app image digest, not a TDX measurement.`
+      : `get_agent returns codehash ${codehash}, and an approve_codehash transaction records that same value. On Shade v1 this is the app image digest, not a TDX measurement.`;
     return make(
       "codehash.approved",
       "PROVEN",
       "App codehash is in approve_codehash history",
       false,
-      `get_agent returns codehash ${codehash}, and an approve_codehash transaction records that same value. On Shade v1 this is the app image digest, not a TDX measurement.`,
+      sentence,
       evidence,
     );
   }
+  const missed = file
+    ? `The file records codehash ${codehash}. It was not in the approve_codehash rows in this file. This run did not call get_agent. An index can be incomplete, so this is not proof the codehash was never approved.`
+    : `get_agent returns codehash ${codehash}. It was not in the approve_codehash history returned for this account. That index can be incomplete, so this is not proof the codehash was never approved.`;
   return make(
     "codehash.approved",
     "NOT_PROVEN",
     "App codehash was not seen in approve_codehash history",
     false,
-    `get_agent returns codehash ${codehash}. It was not in the approve_codehash history returned for this account. That index can be incomplete, so this is not proof the codehash was never approved.`,
+    missed,
     [{ label: "approve_codehash rows scanned", detail: String(approved.length) }],
   );
 }
@@ -677,7 +695,11 @@ function composeFindings(bundle: EvidenceBundle, now: Date): Finding[] {
   if (!compose && assessment.kind === "unknown" && bundle.shade === "measurements-registry") {
     return [];
   }
-  const findings: Finding[] = [dstackFinding(assessment), upgradeFinding(bundle, assessment, now)];
+  const dstack = dstackFinding(assessment);
+  if (fromFile(bundle) && selected.hash) {
+    dstack.plainEnglish += " The file supplied this os_image_hash. This run did not read it from chain.";
+  }
+  const findings: Finding[] = [dstack, upgradeFinding(bundle, assessment, now)];
   if (!compose) return findings;
   findings.push(imageFinding(compose));
   findings.push(logsFinding(compose));
@@ -1048,8 +1070,15 @@ function accessFinding(bundle: EvidenceBundle): Finding | null {
       : assessed.ladder === "PROVEN"
         ? "Access keys are limited function-call keys"
         : "Access-key risk was not proven";
-  return make("access.keys", assessed.ladder, title, false, assessed.reasons.join(" "), [
-    { label: "view_access_key_list", detail: `${bundle.accessKeys?.length ?? 0} keys` },
+  const file = fromFile(bundle);
+  const sentence =
+    assessed.reasons.join(" ") +
+    (file ? " The file supplied these keys. This run did not call view_access_key_list." : "");
+  return make("access.keys", assessed.ladder, title, false, sentence, [
+    {
+      label: file ? "access keys in the file" : "view_access_key_list",
+      detail: `${bundle.accessKeys?.length ?? 0} keys`,
+    },
   ]);
 }
 
@@ -1191,7 +1220,9 @@ function signatureFinding(bundle: EvidenceBundle, stored: ReturnType<typeof veri
     "PROVEN",
     "Quote signature verified",
     false,
-    `The quote signature verified with @phala/dcap-qvl ${version} against the collateral stored with the registration.`,
+    `The quote signature verified with @phala/dcap-qvl ${version} against the collateral stored with the registration.${
+      fromFile(bundle) ? " The quote and the collateral came from this file. This run did not fetch them from chain." : ""
+    }`,
     txEvidence(bundle),
   );
 }
@@ -1350,6 +1381,10 @@ function advisoryFinding(
   );
 }
 
+function fromFile(bundle: EvidenceBundle): boolean {
+  return bundle.historySource === "file";
+}
+
 function clip(value: string): string {
   const cleaned = value.replace(/[\u0000-\u001f\u007f]/g, " ").trim();
   return cleaned.length > 300 ? `${cleaned.slice(0, 300)}…` : cleaned;
@@ -1409,12 +1444,15 @@ function provenanceFinding(bundle: EvidenceBundle): Finding {
     osImageHashConflict: selected.conflict,
     ...measurements,
   });
+  const detail = fromFile(bundle)
+    ? `${assessment.detail} The file supplied these measurement fields. This run did not read them from chain.`
+    : assessment.detail;
   return make(
     "measurements.provenance",
     assessment.ladder,
     assessment.title,
     assessment.inference,
-    assessment.detail,
+    detail,
     assessment.evidence.map((item) => ({ label: item.label, detail: item.detail })),
   );
 }
@@ -1467,6 +1505,15 @@ function contractFindings(bundle: EvidenceBundle): Finding[] {
     codeHash: bundle.codeHash,
     globalContractHash: bundle.globalContractHash,
   });
+  if (fromFile(bundle) && bundle.codeHash) {
+    code.plainEnglish += " The file supplied this code_hash. This run did not call view_account.";
+  }
+  if (fromFile(bundle) && approver.ladder === "PROVEN") {
+    approver.plainEnglish += " The file supplied the owner and keys compared here. This run did not call those views.";
+  }
+  if (fromFile(bundle) && removed.ladder === "PROVEN") {
+    removed.plainEnglish += " The file supplied the method probe or history compared here. This run did not call the contract.";
+  }
   return [approver, removed, code].map((item) =>
     make(item.id, item.ladder, item.title, item.inference, item.plainEnglish, item.evidence),
   );

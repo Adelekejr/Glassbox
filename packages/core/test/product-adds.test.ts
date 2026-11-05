@@ -336,6 +336,41 @@ test("a malformed access key does not throw, and an outside signer is not a sing
   assert.match(outside.plainEnglish, /other\.near/);
 });
 
+test("pasted JSON PROVEN rows name the file and do not claim a fresh chain read", async () => {
+  const pasted = await auditFile(leftPath, { now: FROZEN });
+  const byId = Object.fromEntries(pasted.findings.map((finding) => [finding.id, finding]));
+  assert.equal(pasted.summary.proven > 0, true);
+  assert.equal(byId["contract.code"].ladder, "PROVEN");
+  assert.match(byId["contract.code"].plainEnglish, /The file supplied this code_hash/);
+  assert.match(byId["contract.code"].plainEnglish, /did not call view_account/);
+  assert.equal(byId["measurements.provenance"].ladder, "PROVEN");
+  assert.match(byId["measurements.provenance"].plainEnglish, /The file supplied these measurement fields/);
+  assert.match(byId["measurements.provenance"].plainEnglish, /did not read them from chain/);
+  assert.equal(byId["dstack.range"].ladder, "PROVEN");
+  assert.match(byId["dstack.range"].title, /known fixed image/);
+  assert.match(byId["dstack.range"].plainEnglish, /The file supplied this os_image_hash/);
+  assert.match(byId["dstack.range"].plainEnglish, /did not read it from chain/);
+  assert.match(pasted.limitations.join("\n"), /not a fresh chain read/);
+  assert.doesNotMatch(formatReport(pasted), /hacked/i);
+  assert.doesNotMatch(formatReport(pasted), /currently running/i);
+
+  const capture = await auditFile(votronPath, { now: FROZEN });
+  const cap = Object.fromEntries(capture.findings.map((finding) => [finding.id, finding]));
+  assert.equal(cap["tdx.signature"].ladder, "PROVEN");
+  assert.match(cap["tdx.signature"].plainEnglish, /came from this file/);
+  assert.match(cap["tdx.signature"].plainEnglish, /did not fetch them from chain/);
+  assert.equal(cap["codehash.approved"].ladder, "PROVEN");
+  assert.match(cap["codehash.approved"].plainEnglish, /The file records codehash/);
+  assert.match(cap["codehash.approved"].plainEnglish, /did not call get_agent/);
+  assert.doesNotMatch(cap["codehash.approved"].plainEnglish, /get_agent returns/);
+  assert.equal(cap["access.keys"].evidence[0]?.label, "access keys in the file");
+  assert.match(cap["access.keys"].plainEnglish, /did not call view_access_key_list/);
+  assert.match(cap["tdx.report_data"].plainEnglish, /recorded in this file/);
+  assert.doesNotMatch(cap["tdx.report_data"].plainEnglish, /submitted the registration/);
+  assert.match(capture.limitations.join("\n"), /not a fresh chain read/);
+  assert.equal(capture.anchor.status, "skipped");
+});
+
 test("pasted JSON does not contact a guest URL", async () => {
   let called = false;
   const report = await auditValue(
