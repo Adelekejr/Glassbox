@@ -12,6 +12,7 @@ import { measurementsEqual, replayAll } from "./checks/rtmr.js";
 import { verifyQuoteAt } from "./checks/tdx.js";
 import { upgradePlainEnglish } from "./checks/upgrade.js";
 import { matchShadeMeasurements } from "./data/shade-measurements.js";
+import { attachProvenance } from "./provenance.js";
 import { canonicalSha256 } from "./signed/canonical.js";
 import { planReportAnchor } from "./signed/anchor.js";
 import { buildCanonicalBody } from "./signed/report.js";
@@ -62,7 +63,8 @@ export function buildReport(bundle: EvidenceBundle, options?: { now?: Date; anch
     ...contractFindings(bundle),
     accessFinding(bundle),
     mpcFinding(bundle, now),
-  ].filter((finding): finding is Finding => finding !== null);
+  ].filter((finding): finding is Finding => finding !== null)
+    .map((finding) => attachProvenance(finding, bundle));
 
   findings.sort((a, b) => LADDER_ORDER.indexOf(a.ladder) - LADDER_ORDER.indexOf(b.ladder) || a.id.localeCompare(b.id));
 
@@ -94,6 +96,7 @@ export function buildReport(bundle: EvidenceBundle, options?: { now?: Date; anch
     overall,
     overallPlainEnglish: `Highest rung on this ladder is ${overall.replace("_", " ")} (${summary.risky} risky, ${summary.notProven} not proven, ${summary.proven} proven). That is the strongest concern already listed. It is not a separate check.`,
     findings,
+    methodProbes: bundle.methodProbes,
     approvalHistory: bundle.approvalHistory ?? [],
     approvalHistoryNote: bundle.approvalHistoryNote,
     limitations: [
@@ -163,6 +166,9 @@ export function formatReport(report: Report): string {
     lines.push(ladder.replace("_", " "));
     group.forEach((finding, index) => {
       lines.push(`${index + 1}. ${finding.title}`);
+      lines.push(
+        `   Provenance: ${finding.provenance.evidenceSource} / ${finding.provenance.observationKind}. ${finding.provenance.label}`,
+      );
       lines.push(`   ${finding.plainEnglish}`);
       if (finding.inference) lines.push("   Marked as an inference.");
       if (finding.evidence.length > 0) {
@@ -487,19 +493,32 @@ function approvalFindings(bundle: EvidenceBundle, now: Date): Finding[] {
   if (localDefault) findings.push(localDefault);
   const validity = validityFinding(bundle, now);
   if (validity) findings.push(validity);
+  const measurementsProbe = bundle.methodProbes?.find((probe) => probe.name === "get_approved_measurements");
   if (bundle.shade === "shade-v1" || bundle.shade === "shade-v1-worker") {
     findings.push(codehashFinding(bundle));
+    if (measurementsProbe?.outcome !== "unavailable") {
+      findings.push(
+        make(
+          "measurements.approved",
+          "NOT_PROVEN",
+          "No on-contract list of approved TDX measurements",
+          false,
+          "This Shade v1 interface does not expose a view of approved TDX measurements. The codehash check, when it succeeds, covers the app image digest only.",
+        ),
+      );
+    }
+  }
+  if (measurementsProbe?.outcome === "unavailable") {
     findings.push(
       make(
         "measurements.approved",
         "NOT_PROVEN",
-        "No on-contract list of approved TDX measurements",
+        "Approved measurements were not read",
         false,
-        "This Shade v1 interface does not expose a view of approved TDX measurements. The codehash check, when it succeeds, covers the app image digest only.",
+        "get_approved_measurements did not answer. The RPC call failed. That is not MethodNotFound, and it is not an empty approved list.",
       ),
     );
-  }
-  if (bundle.approvedMeasurements && bundle.approvedMeasurements.length > 0) {
+  } else if (bundle.approvedMeasurements && bundle.approvedMeasurements.length > 0) {
     findings.push(measurementListFinding(bundle));
   } else if (bundle.shade === "shade-v2") {
     findings.push(
@@ -585,6 +604,17 @@ function codehashFinding(bundle: EvidenceBundle): Finding {
   const approved = bundle.approvedCodehashes ?? [];
   const network = bundle.network === "offline" ? "testnet" : bundle.network;
   const file = fromFile(bundle);
+  const agentProbe = bundle.methodProbes?.find((probe) => probe.name === "get_agent");
+  if (!codehash && (agentProbe?.outcome === "unavailable" || bundle.agentViewError)) {
+    const detail = bundle.agentViewError ?? agentProbe?.detail ?? "the RPC call failed";
+    return make(
+      "codehash.approved",
+      "NOT_PROVEN",
+      "Agent codehash was not loaded",
+      false,
+      `get_agent did not answer (${detail}). A transport failure is not MethodNotFound, so the codehash was not compared with approve_codehash history.`,
+    );
+  }
   if (!codehash) {
     return make(
       "codehash.approved",
@@ -1648,5 +1678,18 @@ function make(
   plainEnglish: string,
   evidence: EvidenceLink[] = [],
 ): Finding {
-  return { id, ladder, title, inference, plainEnglish, evidence };
+  return {
+    id,
+    ladder,
+    title,
+    inference,
+    plainEnglish,
+    evidence,
+    provenance: {
+      evidenceSource: "unavailable",
+      observationKind: "unavailable",
+      liveChain: false,
+      label: "Provenance was not attached.",
+    },
+  };
 }

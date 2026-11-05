@@ -13,7 +13,7 @@ import {
 import { normalizeRegistrationArgs, normalizeTcb } from "./evidence/registration.js";
 import { AccountNotFoundError } from "./near/errors.js";
 import { extractFunctionCallArgs, listMethodCalls, type HistoryCall } from "./near/history.js";
-import { NearClient, methodExists } from "./near/rpc.js";
+import { NearClient, methodExists, type ViewResult } from "./near/rpc.js";
 import { buildReport } from "./report.js";
 import {
   detectNetwork,
@@ -24,6 +24,7 @@ import {
   type ApprovedCodehash,
   type ApprovedMeasurementRow,
   type EvidenceBundle,
+  type MethodProbe,
   type MpcAllowlist,
   type Network,
   type RegistrationEvidence,
@@ -107,7 +108,9 @@ export async function auditTarget(target: string, options: AuditOptions = {}): P
 }
 
 export async function auditValue(value: unknown, options: AuditOptions & { label?: string } = {}): Promise<Report> {
-  const bundle = bundleFromJson(value, options.label ?? "pasted-json");
+  const label = options.label ?? "pasted-json";
+  const bundle = bundleFromJson(value, label);
+  bundle.inputOrigin = label === "pasted-json" ? "paste" : "file";
   return buildReport(bundle, reportOptions(options));
 }
 
@@ -132,15 +135,11 @@ async function collectAccount(accountId: string, network: Network, options: Audi
     finality: options.finality,
   });
   const account = await client.viewAccount(accountId);
-  const probes = await Promise.all(
-    PROBE_METHODS.map(async (method) => {
-      const view = await client.viewFunction(accountId, method, {});
-      return [method, view] as const;
-    }),
-  );
-  const probeMap = new Map(probes);
-  const present = probes.filter(([, view]) => methodExists(view)).map(([method]) => method);
-  const shade = classifyShade(new Set(present));
+  const probed = await Promise.all(PROBE_METHODS.map((method) => probeMethod(client, accountId, method)));
+  const probeMap = new Map(probed.map((probe) => [probe.name, probe]));
+  const methodProbes: MethodProbe[] = probed.map(({ name, outcome, detail }) => ({ name, outcome, detail }));
+  const present = methodProbes.filter((probe) => probe.outcome === "present").map((probe) => probe.name);
+  const shade = classifyShade(methodProbes);
   const generatedAt = (options.now ?? new Date()).toISOString();
 
   let registration: RegistrationEvidence | null = null;
@@ -179,7 +178,7 @@ async function collectAccount(accountId: string, network: Network, options: Audi
     approvedCodehashes = codehashesFrom(history.calls);
   }
 
-  const infoView = probeMap.get("get_contract_info");
+  const infoView = probeMap.get("get_contract_info")?.view;
   let ownerId: string | undefined;
   if (infoView?.ok && infoView.value && typeof infoView.value === "object") {
     const info = infoView.value as { requires_tee?: boolean; owner_id?: unknown; owner?: unknown; ownerId?: unknown };
@@ -190,18 +189,21 @@ async function collectAccount(accountId: string, network: Network, options: Audi
   for (const name of CHANGE_METHOD_NAMES) {
     try {
       const view = await client.viewFunction(accountId, name, {});
-      changeMethods.push({ name, exists: methodExists(view) });
-    } catch {
+      const exists = methodExists(view);
+      changeMethods.push({ name, exists });
+      methodProbes.push({ name, outcome: exists ? "present" : "absent", detail: exists ? undefined : "MethodNotFound" });
+    } catch (error) {
       // An RPC failure is not MethodNotFound. Leave the method unprobed.
+      methodProbes.push({ name, outcome: "unavailable", detail: transportDetail(error) });
     }
   }
-  const measurementView = probeMap.get("get_approved_measurements");
+  const measurementView = probeMap.get("get_approved_measurements")?.view;
   if (measurementView?.ok && Array.isArray(measurementView.value)) {
     approvedMeasurements = measurementView.value
       .map((row) => normalizeMeasurementRow(row))
       .filter((row): row is ApprovedMeasurementRow => row !== null);
   }
-  const agentsView = probeMap.get("get_agents");
+  const agentsView = probeMap.get("get_agents")?.view;
   if (agentsView?.ok && Array.isArray(agentsView.value)) {
     v2Agents = agentsView.value
       .map((row) => normalizeV2Agent(row))
@@ -216,11 +218,16 @@ async function collectAccount(accountId: string, network: Network, options: Audi
   if (!options.skipHistory && usedNearblocks.value) historySource = "nearblocks";
 
   const agentId = registration?.agentId;
+  let agentViewError: string | undefined;
   if (present.includes("get_agent") && agentId) {
-    const view = await client.viewFunction(accountId, "get_agent", { account_id: agentId });
-    if (view.ok && view.value && typeof view.value === "object") {
-      const record = view.value as AgentView;
-      agentView = { checksum: record.checksum, codehash: record.codehash };
+    try {
+      const view = await client.viewFunction(accountId, "get_agent", { account_id: agentId });
+      if (view.ok && view.value && typeof view.value === "object") {
+        const record = view.value as AgentView;
+        agentView = { checksum: record.checksum, codehash: record.codehash };
+      }
+    } catch (error) {
+      agentViewError = transportDetail(error);
     }
   }
 
@@ -248,7 +255,7 @@ async function collectAccount(accountId: string, network: Network, options: Audi
   }
 
   if (usedNearblocks.value) historySource = "nearblocks";
-  let shadeDetail = describeShade(shade, present, account.global_contract_hash);
+  let shadeDetail = describeShade(shade, methodProbes, account.global_contract_hash);
   if (requiresTee === false) {
     shadeDetail += " get_contract_info says requires_tee is false, so this registration path is Shade local mode, not a TEE.";
   } else if (requiresTee === true) {
@@ -289,6 +296,9 @@ async function collectAccount(accountId: string, network: Network, options: Audi
     collateralFetchedAt,
     historySource,
     historyError,
+    inputOrigin: "chain",
+    methodProbes,
+    agentViewError,
     rpcEndpoints: [...client.endpointLog, ...archival.endpointLog],
     generatedAt,
   };
@@ -462,34 +472,81 @@ function readBlockHeight(value: unknown): number | undefined {
   return undefined;
 }
 
-function classifyShade(present: Set<string>): ShadeKind {
-  if (present.has("get_contract_info") || (present.has("get_approved_measurements") && present.has("get_agents"))) {
+function classifyShade(probes: MethodProbe[]): ShadeKind {
+  const outcome = (name: string) => probes.find((probe) => probe.name === name)?.outcome;
+  const present = (name: string) => outcome(name) === "present";
+  const absent = (name: string) => outcome(name) === "absent";
+  if (present("get_contract_info") || (present("get_approved_measurements") && present("get_agents"))) {
     return "shade-v2";
   }
-  if (present.has("get_agent")) return "shade-v1";
-  if (present.has("get_worker")) return "shade-v1-worker";
-  if (present.has("get_approved_measurements")) return "measurements-registry";
-  if (present.has("allowed_docker_image_hashes")) return "mpc-signer";
+  // Absence is MethodNotFound only. A failed probe must not select an interface that depends on that method being missing.
+  if (present("get_agent") && absent("get_contract_info")) return "shade-v1";
+  if (present("get_worker") && absent("get_agent") && absent("get_contract_info")) return "shade-v1-worker";
+  if (present("get_approved_measurements") && absent("get_contract_info")) return "measurements-registry";
+  if (
+    present("allowed_docker_image_hashes") &&
+    absent("get_agent") &&
+    absent("get_worker") &&
+    absent("get_contract_info") &&
+    absent("get_approved_measurements") &&
+    absent("get_agents")
+  ) {
+    return "mpc-signer";
+  }
   return "unknown";
 }
 
-function describeShade(kind: ShadeKind, present: string[], globalHash?: string | null): string {
+function describeShade(kind: ShadeKind, probes: MethodProbe[], globalHash?: string | null): string {
+  const views = probes.filter((probe) => (PROBE_METHODS as readonly string[]).includes(probe.name));
+  const present = views.filter((probe) => probe.outcome === "present").map((probe) => probe.name);
+  const absent = views.filter((probe) => probe.outcome === "absent").map((probe) => probe.name);
+  const unavailable = views.filter((probe) => probe.outcome === "unavailable").map((probe) => probe.name);
   const methods = present.length ? present.join(", ") : "no known view methods";
   const global = globalHash ? ` It uses global contract ${globalHash}.` : "";
+  const unavailableNote = unavailable.length
+    ? ` These probes failed and were not treated as absent: ${unavailable.join(", ")}.`
+    : "";
   switch (kind) {
     case "shade-v2":
-      return `View methods include a Shade v2 contract surface (${methods}).${global}`;
+      return `View methods include a Shade v2 contract surface (${methods}).${global}${unavailableNote}`;
     case "shade-v1":
-      return `View methods match Shade v1: get_agent is present and get_contract_info is not (${methods}). Shade v1 has no view that lists approved measurements.${global}`;
+      return `View methods match Shade v1: get_agent is present and get_contract_info is not (${methods}). Shade v1 has no view that lists approved measurements.${global}${unavailableNote}`;
     case "shade-v1-worker":
-      return `View methods match a Shade v1 worker proxy (${methods}).${global}`;
+      return `View methods match a Shade v1 worker proxy (${methods}).${global}${unavailableNote}`;
     case "measurements-registry":
-      return `The account publishes get_approved_measurements and does not expose Shade v2's get_contract_info (${methods}).${global}`;
+      return `The account publishes get_approved_measurements and does not expose Shade v2's get_contract_info (${methods}).${global}${unavailableNote}`;
     case "mpc-signer":
-      return `The account exposes allowed_docker_image_hashes (${methods}). This is the MPC docker allowlist, not a Shade agent contract.${global}`;
+      return `The account exposes allowed_docker_image_hashes (${methods}). This is the MPC docker allowlist, not a Shade agent contract.${global}${unavailableNote}`;
     default:
+      if (unavailable.length > 0) {
+        return `The interface was not classified because some probes did not answer (${unavailable.join(", ")}). A transport failure is not MethodNotFound. Methods that answered: ${present.join(", ") || "none"}. Methods the host reported as missing: ${absent.join(", ") || "none"}.${global}`;
+      }
       return `The account did not expose Shade v1, Shade v2, an approved-measurements view, or allowed_docker_image_hashes (${methods}).${global}`;
   }
+}
+
+interface ProbeHit {
+  name: string;
+  outcome: MethodProbe["outcome"];
+  detail?: string;
+  view?: ViewResult;
+}
+
+async function probeMethod(client: NearClient, accountId: string, method: string): Promise<ProbeHit> {
+  try {
+    const view = await client.viewFunction(accountId, method, {});
+    if (methodExists(view)) return { name: method, outcome: "present", view };
+    return { name: method, outcome: "absent", detail: "MethodNotFound", view };
+  } catch (error) {
+    return { name: method, outcome: "unavailable", detail: transportDetail(error) };
+  }
+}
+
+function transportDetail(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  const cleaned = message.replace(/[\u0000-\u001f\u007f]/g, " ").trim();
+  const clipped = cleaned.length > 180 ? `${cleaned.slice(0, 180)}…` : cleaned;
+  return `RPC failed. This is not MethodNotFound. ${clipped || "the call did not return"}`;
 }
 
 function bundleFromJson(value: unknown, label: string): EvidenceBundle {
@@ -649,6 +706,7 @@ function baseBundle(target: string, patch: Partial<EvidenceBundle> & Pick<Eviden
     rpcEndpoints: [],
     generatedAt: new Date().toISOString(),
     historySource: "file",
+    inputOrigin: "file",
     ...patch,
   };
 }

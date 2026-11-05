@@ -10,6 +10,13 @@ export interface EvidenceLink {
   detail?: string;
 }
 
+export interface FindingProvenance {
+  evidenceSource: "chain" | "file" | "paste" | "computed" | "unavailable";
+  observationKind: "chain" | "file" | "paste" | "computed" | "unavailable";
+  liveChain: boolean;
+  label: string;
+}
+
 export interface Finding {
   id: string;
   ladder: "PROVEN" | "NOT_PROVEN" | "RISKY";
@@ -17,6 +24,7 @@ export interface Finding {
   plainEnglish: string;
   inference: boolean;
   evidence: EvidenceLink[];
+  provenance?: FindingProvenance;
 }
 
 export interface ApprovalEvent {
@@ -59,6 +67,15 @@ const ORDER: Rung[] = ["RISKY", "NOT_PROVEN", "PROVEN"];
 const LABEL: Record<Rung, string> = { RISKY: "RISKY", NOT_PROVEN: "NOT PROVEN", PROVEN: "PROVEN" };
 const FILTER_LABEL: Record<Rung, string> = { RISKY: "Risky", NOT_PROVEN: "Not proven", PROVEN: "Proven" };
 
+function provenanceTag(provenance: FindingProvenance): string {
+  if (provenance.liveChain) return "Chain";
+  if (provenance.observationKind === "unavailable") return "Unavailable";
+  if (provenance.evidenceSource === "paste") return "Paste · not live chain";
+  if (provenance.evidenceSource === "file") return "File · not live chain";
+  if (provenance.observationKind === "computed") return "Computed · not live chain";
+  return "Not live chain";
+}
+
 function breakable(url: string) {
   // Allow line breaks after "." and "/" so long hosts wrap cleanly in the narrow aside.
   return url.split(/(?<=[./])/).flatMap((part, i) => (i ? [<wbr key={i} />, part] : [part]));
@@ -73,6 +90,7 @@ function FindingRow({ finding }: { finding: Finding }) {
         <span className={`glyph ${finding.ladder}`} aria-hidden="true" />
         <span>
           {finding.title}
+          {finding.provenance ? <span className="tag">{provenanceTag(finding.provenance)}</span> : null}
           {finding.inference ? <span className="tag">Inference</span> : null}
         </span>
         <Caret className="caret" />
@@ -81,6 +99,9 @@ function FindingRow({ finding }: { finding: Finding }) {
         <div>
           <div className="inner">
             <p>{finding.plainEnglish}</p>
+            {finding.provenance ? (
+              <p style={{ marginTop: 8, fontSize: ".875rem", color: "var(--text-3)" }}>{finding.provenance.label}</p>
+            ) : null}
             {finding.inference ? (
               <p style={{ marginTop: 8, fontSize: ".875rem", color: "var(--text-3)" }}>Marked as an inference.</p>
             ) : null}

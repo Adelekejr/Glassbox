@@ -1,6 +1,6 @@
 import { auditAccount, auditValue, presentCheck } from "core";
+import { admitAudit } from "../../../lib/limit";
 import { classifyWebTarget, type NetworkName } from "../../../lib/network";
-import { takeAuditSlot } from "../../../lib/limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,10 +25,11 @@ export async function POST(request: Request): Promise<Response> {
   if (classified.kind === "reject") {
     return Response.json({ error: classified.reason }, { status: 400 });
   }
-  if (!takeAuditSlot()) {
+  const admission = await admitAudit({ token: request.headers.get("x-glassbox-audit-token") });
+  if (!admission.ok) {
     return Response.json(
-      { error: "Too many audits from this server. Wait a minute and retry." },
-      { status: 429, headers: { "retry-after": "60" } },
+      { error: admission.error, scope: admission.scope },
+      { status: admission.status, headers: admission.headers },
     );
   }
   const network: NetworkName | undefined =
@@ -38,9 +39,11 @@ export async function POST(request: Request): Promise<Response> {
       classified.kind === "json"
         ? await auditJson(body.target, network)
         : await auditAccount(classified.accountId, network ? { network } : {});
-    return Response.json(presentCheck(report));
+    return Response.json(presentCheck(report), { headers: admission.headers });
   } catch (error) {
-    return Response.json({ error: publicError(error) }, { status: 400 });
+    return Response.json({ error: publicError(error) }, { status: 400, headers: admission.headers });
+  } finally {
+    await admission.release?.();
   }
 }
 
