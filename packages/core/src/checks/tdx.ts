@@ -1,4 +1,10 @@
 import {
+  PINNED_PCCS_URL,
+  collateralUrlAllowed,
+  withBlockedCollateralFetch,
+  withCollateralGuard,
+} from "./pccs.js";
+import {
   PHALA_PCCS_URL,
   Quote,
   QuoteVerifier,
@@ -92,12 +98,46 @@ export function verifyQuoteAt(quoteHex: string, collateral: unknown, nowSecs: nu
   }
 }
 
-export async function fetchFreshCollateral(quoteHex: string): Promise<unknown> {
-  return getCollateral(PHALA_PCCS_URL, quoteBytes(quoteHex));
+/**
+ * Fresh collateral comes from the pinned Phala PCCS host only.
+ * A second argument is rejected so a caller cannot supply a URL (SSRF).
+ */
+export async function fetchFreshCollateral(quoteHex: string, callerUrl?: never): Promise<unknown> {
+  if (callerUrl !== undefined || arguments.length > 1) {
+    throw new Error("A caller-supplied PCCS URL is not accepted.");
+  }
+  const url = builtinPccsUrl();
+  return withCollateralGuard(() => getCollateral(url, quoteBytes(quoteHex)));
+}
+
+export function builtinPccsUrl(): string {
+  const pinned = PINNED_PCCS_URL;
+  const library = PHALA_PCCS_URL.replace(/\/$/, "");
+  if (library !== pinned || !collateralUrlAllowed(pinned)) {
+    throw new Error("The built-in PCCS URL is not on the allowlist.");
+  }
+  return pinned;
 }
 
 export function pccsUrl(): string {
-  return PHALA_PCCS_URL;
+  return builtinPccsUrl();
+}
+
+/**
+ * Proves @phala/dcap-qvl's fetch goes through the allowlist guard.
+ * block-all throws before the network. A captured original fetch would not.
+ */
+export async function proveCollateralFetchGuard(quoteHex: string): Promise<void> {
+  await withBlockedCollateralFetch(async () => {
+    try {
+      await getCollateral(builtinPccsUrl(), quoteBytes(quoteHex));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/allowlist/i.test(message)) return;
+      throw new Error(`Collateral fetch escaped the allowlist guard: ${message}`);
+    }
+    throw new Error("Collateral fetch escaped the allowlist guard.");
+  });
 }
 
 function normalizeCollateral(collateral: unknown): Collateral {

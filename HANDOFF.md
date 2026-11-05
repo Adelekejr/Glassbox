@@ -29,7 +29,8 @@ Written 2026-11-04 so another session can continue without re-deriving the rules
 - Say "matches a vulnerable configuration" or "not a known fixed image". Never "hacked", "compromised", or "pwned".
 - Say "registered configuration". Do not say the guest is "currently running" that image. A registration is not a live observation. Finding `runtime.observed` exists to keep that gap visible.
 - Mark inferences. The pre-0.5 tappd.sock pattern is an inference. A Shade 0.5.7/0.5.8 table hit is a comparison with the published table, not a measurement Glassbox computed. An unknown `os_image_hash` is "not a known fixed image", and the fixed list can lag a newer release.
-- Do not print env values. Names only.
+- Do not mark a declared `dstack_version` of 0.5.12 or 0.6.1 as a proven fixed image. PROVEN "fixed image" requires an `os_image_hash` on the fixed list. When a hash is present, it is the comparison; the declared string does not replace it.
+- Do not print env values. A plaintext secret is the key name plus the first 4 hex characters of `sha256(value)`. Never the value. Names and `${NAME}` references are not plaintext.
 - Do not score payments. If a method is `pay_by_agent` or similar, leave it alone. Gideon owns that question.
 - NOT PROVEN is not a clean bill of health. Do not turn a missing view into "safe".
 - When NearBlocks is called, the report must contain the line `Powered by Nearblocks.io APIs.`

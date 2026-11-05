@@ -16,6 +16,9 @@ export function upgradePlainEnglish(assessment: DstackAssessment, now: Date, sha
   if (assessment.kind === "vulnerable-heuristic") {
     return `${schedule}${v2} This registered configuration only matches a pre-0.5 pattern, so Glassbox cannot tell a v0.3.x retirement apart from another unfixed build.`;
   }
+  if (assessment.kind === "declared-fixed") {
+    return `${schedule} ${assessment.detail} The 20 Nov 2026 schedule is not cleared by a declared version alone.`;
+  }
   if (assessment.kind === "unknown") {
     return `${schedule} Glassbox could not tell whether this registered configuration is one of the builds that schedule applies to. ${assessment.detail}`;
   }

@@ -36,6 +36,13 @@ export interface AuditPayload {
     approvalHistoryNote?: string;
     attribution: string[];
     limitations: string[];
+    verifier?: {
+      package: string;
+      version: string;
+      qeIdentity: string;
+      tcbStatus: string;
+      pccsAllowlist: string[];
+    };
   };
 }
 
@@ -49,6 +56,12 @@ export function Ladder({ payload }: { payload: AuditPayload }) {
         <strong>{report.target}</strong> · {report.network} · {report.shade}
       </p>
       <p>{payload.summary}</p>
+      {report.verifier ? (
+        <p>
+          Verifier {report.verifier.package} {report.verifier.version}. QE identity {report.verifier.qeIdentity}. TCB
+          status {report.verifier.tcbStatus}. PCCS allowlist: {report.verifier.pccsAllowlist.join(", ")}.
+        </p>
+      ) : null}
       {ORDER.map((rung) => {
         const group = report.findings.filter((finding) => finding.ladder === rung);
         if (group.length === 0) return null;

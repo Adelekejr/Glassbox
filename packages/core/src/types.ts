@@ -36,9 +36,19 @@ export interface ApprovalEvent {
   detail: string;
 }
 
+export interface VerifierMetadata {
+  package: "@phala/dcap-qvl";
+  version: string;
+  qeIdentity: "mandatory" | "not-mandatory";
+  tcbStatus: "enforced";
+  pccsAllowlist: string[];
+}
+
 export interface Report {
   tool: "glassbox";
   version: string;
+  /** Pinned quote verifier. QE identity and the PCCS allowlist are stated here, not only in prose. */
+  verifier: VerifierMetadata;
   target: string;
   network: Network | "offline";
   shade: ShadeKind;
@@ -94,14 +104,29 @@ export interface ImageRef {
   implicitLatest: boolean;
 }
 
+/** A secret-looking env entry. Plaintext values are never stored; only a 4-hex sha256 prefix. */
+export interface SecretHit {
+  name: string;
+  path: string;
+  kind: "plaintext" | "reference" | "name";
+  hashPrefix?: string;
+}
+
 export interface ComposeFacts {
   publicLogs: boolean | null;
   publicSysinfo: boolean | null;
+  kmsEnabled: boolean | null;
+  hasEncryptedEnv: boolean;
+  /** null when the field is absent. */
+  allowedEnvs: string[] | null;
   dstackVersion: string | null;
   /** True when the version was a field in the file, not inferred from measurements. */
   versionDeclared: boolean;
   envNames: string[];
+  secrets: SecretHit[];
   images: ImageRef[];
+  /** Volume or device paths that bind docker.sock, tappd.sock, or dstack.sock into an app. */
+  socketMounts: string[];
   referencesTappdSocket: boolean;
   hasDockerCompose: boolean;
 }
