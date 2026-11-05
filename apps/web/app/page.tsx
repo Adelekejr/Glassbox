@@ -39,7 +39,7 @@ function SecHead({ n, kicker, id, title, children }: { n: string; kicker: string
 }
 
 const STEPS: { title: React.ReactNode; body: React.ReactNode }[] = [
-  { title: "Paste an account or a file.", body: "An account id is read from NEAR. A JSON file is read on this computer. The web form does not read local files." },
+  { title: "Paste an account or a file.", body: "A live account id is read from NEAR. JSON pasted on this page is the text in the form. A CLI local file is read on your computer when you pass a path to glassbox. This page does not read local files." },
   { title: "Network from the suffix.", body: <><code>.testnet</code> is testnet. <code>.near</code> is mainnet. Anything else is tried on mainnet, then testnet.</> },
   { title: "Fetch the registration evidence.", body: <>Glassbox looks up <code>register_agent</code> (or <code>register_worker</code>) and reads the arguments. It does not write to the chain.</> },
   { title: "Verify the quote.", body: <><code>@phala/dcap-qvl</code> checks the signature. Fresh collateral comes only from the PCCS allowlist. A caller cannot choose that host.</> },

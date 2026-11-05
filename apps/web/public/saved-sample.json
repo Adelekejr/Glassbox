@@ -1,0 +1,765 @@
+{
+  "kind": "saved-sample",
+  "notice": "Saved sample of the CLI local file packages/core/test/fixtures/votron-registration.json. Age checks use the report clock 2026-11-05T12:00:00.000Z. This is not a live account, not a fresh chain read, and not JSON pasted into the form.",
+  "payload": {
+    "overall": "RISKY",
+    "summary": "Highest rung on this ladder is RISKY (8 risky, 10 not proven, 14 proven). That is the strongest concern already listed. It is not a separate check.",
+    "report": {
+      "tool": "glassbox",
+      "version": "0.2.0",
+      "verifier": {
+        "package": "@phala/dcap-qvl",
+        "version": "0.7.1",
+        "qeIdentity": "mandatory",
+        "tcbStatus": "enforced",
+        "pccsAllowlist": [
+          "https://pccs.phala.network",
+          "https://api.trustedservices.intel.com",
+          "https://certificates.trustedservices.intel.com"
+        ]
+      },
+      "target": "ac-sandbox.votron.testnet",
+      "network": "testnet",
+      "shade": "shade-v1",
+      "generatedAt": "2026-11-05T22:28:16.716Z",
+      "inputs": {
+        "contract": "ac-sandbox.votron.testnet",
+        "agent": "5ed6f9115c34750601502ca651d57df67836924ca0f3cf9fad27e23a7368c8a6",
+        "txHash": "HczqYXdRBZfyTtnQiPqGRXe3zEhvwHu3hyCUkqMq8VjN",
+        "blockHeight": null,
+        "collateralSource": "file",
+        "collateralFetchedAt": null,
+        "freshCollateralSource": null
+      },
+      "threatModel": "A valid Intel TDX quote proves a TDX-attested registered configuration, not an honest operator. That includes a quote that carries a dstack context. TEE.fail showed that physical access to DDR5 memory can forge TDX quotes, including quotes for dstack contexts. See https://tee.fail/.",
+      "freshness": {
+        "registrationTime": "2025-09-27T03:54:14.000Z",
+        "attestationAge": "404 days",
+        "validUntil": [],
+        "provenAtRegistrationOnly": true,
+        "live": {
+          "attempted": false,
+          "reachable": false,
+          "detail": "No live guest endpoint was named. Phala blocks public guest-agent routes by default. Glassbox did not send a nonce. A registration is not a live process. Proven at registration only."
+        }
+      },
+      "facts": {
+        "appCodehash": "2a2f4704345359172f31e992188c60c2cbff4c2151dceeabccf472bad8031243",
+        "contractCodeHash": "2HkUtRxzdaucz8YqQUB24g5Crnn4NiuY2b7fp7SAVFeT",
+        "osImageHash": null,
+        "mrtd": "c68518a0ebb42136c12b2275164f8c72f25fa9a34392228687ed6e9caeb9c0f1dbd895e9cf475121c029dc47e70e91fd",
+        "rtmr0": "d55fa42166eb5d23d1533733da43cc665b792433d43fd79cc1e7ffa04c08faa41148a87005d7de1a97508e0dd5e7eb9b",
+        "rtmr1": "154e08f5c1f7b1fce4cbfe1c14f3ba67b70044ede2751487279cd1f2e4239dee99a6d45e24ebde6b6a6f5ae49878e0e6",
+        "rtmr2": "9edcd363660e85b71c318324996dda756c372d9f6960edbfa863b1e684822eb48dd95e218ae2b78e51ef97f3b8f5c9dc",
+        "publicLogs": true,
+        "publicSysinfo": true,
+        "images": [
+          "mattdlockyer/shade-agent-api@sha256:a86e3a4300b069c08d629a38d61a3d780f7992eaf36aa505e4527e466553e2e5",
+          "jwaup/votron@sha256:2a2f4704345359172f31e992188c60c2cbff4c2151dceeabccf472bad8031243"
+        ],
+        "dstackVersion": null,
+        "secretEnvNames": [
+          "NEAR_SEED_PHRASE",
+          "ANTHROPIC_API_KEY",
+          "AWS_ACCESS_KEY_ID",
+          "AWS_SECRET_ACCESS_KEY",
+          "AWS_SESSION_TOKEN"
+        ]
+      },
+      "anchor": {
+        "status": "skipped",
+        "intent": false,
+        "reason": "Report hash anchoring is off. Glassbox does not send a transaction. Report sha256: c69e80dae96228f97248c3d3efde28249ddeb4ee2b03de79c4452297cf526571. A later opt-in can publish this sha256 on NEAR. No NEAR key is loaded, and no account is required today."
+      },
+      "summary": {
+        "proven": 14,
+        "notProven": 10,
+        "risky": 8
+      },
+      "overall": "RISKY",
+      "overallPlainEnglish": "Highest rung on this ladder is RISKY (8 risky, 10 not proven, 14 proven). That is the strongest concern already listed. It is not a separate check.",
+      "findings": [
+        {
+          "id": "access.keys",
+          "ladder": "RISKY",
+          "title": "Access keys can change or broadly call the account",
+          "inference": false,
+          "plainEnglish": "Full-access key ed25519:F7jZEsyZ2kr8qCddBY2F44DryGMFDy5i4xkkMMDu9Fep. The holder can redeploy the contract and change what it accepts. The registered policy is not locked against this key. The file supplied these keys. This run did not call view_access_key_list.",
+          "evidence": [
+            {
+              "label": "access keys in the file",
+              "detail": "1 keys"
+            }
+          ],
+          "provenance": {
+            "evidenceSource": "file",
+            "observationKind": "file",
+            "liveChain": false,
+            "label": "Equality of values in the supplied file. Not a live chain observation."
+          }
+        },
+        {
+          "id": "compose.kms",
+          "ladder": "RISKY",
+          "title": "Registered configuration has no encrypted env",
+          "inference": false,
+          "plainEnglish": "kms_enabled is true, and the registered configuration has no encrypted env field. A ${NAME} reference is not ciphertext, and this check does not print env values.",
+          "evidence": [
+            {
+              "label": "app_compose.kms_enabled",
+              "detail": "true"
+            },
+            {
+              "label": "app_compose.encrypted_env",
+              "detail": "absent"
+            }
+          ],
+          "provenance": {
+            "evidenceSource": "file",
+            "observationKind": "computed",
+            "liveChain": false,
+            "label": "Local check of the supplied file. Not a live chain observation."
+          }
+        },
+        {
+          "id": "compose.sockets",
+          "ladder": "RISKY",
+          "title": "A docker or guest-agent socket is mounted into an app",
+          "inference": false,
+          "plainEnglish": "The registered configuration mounts a socket into an app container: docker_compose_file volumes: /var/run/tappd.sock. A mounted docker.sock or guest-agent socket matches a vulnerable configuration.",
+          "evidence": [
+            {
+              "label": "docker_compose_file volumes: /var/run/tappd.sock"
+            }
+          ],
+          "provenance": {
+            "evidenceSource": "file",
+            "observationKind": "computed",
+            "liveChain": false,
+            "label": "Local check of the supplied file. Not a live chain observation."
+          }
+        },
+        {
+          "id": "dstack.public_logs",
+          "ladder": "RISKY",
+          "title": "public_logs is true in the registered configuration",
+          "inference": false,
+          "plainEnglish": "The registered app compose sets public_logs to true. Phala's console template used to default this on. Treat logs from that configuration as public.",
+          "evidence": [
+            {
+              "label": "app_compose.public_logs",
+              "detail": "true"
+            }
+          ],
+          "provenance": {
+            "evidenceSource": "file",
+            "observationKind": "computed",
+            "liveChain": false,
+            "label": "Local check of the supplied file. Not a live chain observation."
+          }
+        },
+        {
+          "id": "dstack.public_sysinfo",
+          "ladder": "RISKY",
+          "title": "public_sysinfo is true in the registered configuration",
+          "inference": false,
+          "plainEnglish": "The registered app compose sets public_sysinfo to true. System information from that configuration is public.",
+          "evidence": [
+            {
+              "label": "app_compose.public_sysinfo",
+              "detail": "true"
+            }
+          ],
+          "provenance": {
+            "evidenceSource": "file",
+            "observationKind": "computed",
+            "liveChain": false,
+            "label": "Local check of the supplied file. Not a live chain observation."
+          }
+        },
+        {
+          "id": "dstack.range",
+          "ladder": "RISKY",
+          "title": "Registered configuration matches a vulnerable configuration",
+          "inference": true,
+          "plainEnglish": "Heuristic. The registered configuration references /var/run/tappd.sock and has no os-image-hash event. The event log has a rootfs-hash event and no os-image-hash event. That pattern fits dstack before 0.5 (often described as 0.3.x or 0.4.x). It matches a vulnerable configuration in the 0.3.1–0.6.0 range. It does not identify an exact release. The fixed releases named by Phala are 0.6.1 and 0.5.12.",
+          "evidence": [
+            {
+              "label": "Phala post-mortem",
+              "url": "https://phala.com/posts/2026-10-post-mortem-dstack-guest-agent-vulnerability"
+            }
+          ],
+          "provenance": {
+            "evidenceSource": "file",
+            "observationKind": "computed",
+            "liveChain": false,
+            "label": "Local check of the supplied file. Not a live chain observation."
+          }
+        },
+        {
+          "id": "dstack.secret_env",
+          "ladder": "RISKY",
+          "title": "Registered configuration names secret-looking env vars",
+          "inference": false,
+          "plainEnglish": "These env names match a secret-looking pattern: NEAR_SEED_PHRASE, ANTHROPIC_API_KEY, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN. Glassbox reports the names only. A name in the registered configuration is not proof of the value, and the value is not shown.",
+          "evidence": [
+            {
+              "label": "NEAR_SEED_PHRASE",
+              "detail": "name only"
+            },
+            {
+              "label": "ANTHROPIC_API_KEY",
+              "detail": "name only"
+            },
+            {
+              "label": "AWS_ACCESS_KEY_ID",
+              "detail": "name only"
+            },
+            {
+              "label": "AWS_SECRET_ACCESS_KEY",
+              "detail": "name only"
+            },
+            {
+              "label": "AWS_SESSION_TOKEN",
+              "detail": "name only"
+            }
+          ],
+          "provenance": {
+            "evidenceSource": "file",
+            "observationKind": "computed",
+            "liveChain": false,
+            "label": "Local check of the supplied file. Not a live chain observation."
+          }
+        },
+        {
+          "id": "dstack.upgrade",
+          "ladder": "RISKY",
+          "title": "20 Nov 2026 auto-upgrade or v0.3.x retirement may apply",
+          "inference": true,
+          "plainEnglish": "Phala's 19 Oct 2026 post-mortem says to move to v0.6.1 or v0.5.12 by 19 Nov 2026. From 20 Nov 2026, remaining v0.5.x and v0.6.0 CVMs are auto-upgraded in batches (24 hour notice on the status page), and v0.3.x is retired with no upgrade path (enterprise excluded). Shade v1 approves an app codehash, so an OS image change does not by itself invalidate that codehash. A v0.3.x-era registration can still be retired by the operator. This registered configuration only matches a pre-0.5 pattern, so Glassbox cannot tell a v0.3.x retirement apart from another unfixed build.",
+          "evidence": [
+            {
+              "label": "Phala post-mortem",
+              "url": "https://phala.com/posts/2026-10-post-mortem-dstack-guest-agent-vulnerability"
+            }
+          ],
+          "provenance": {
+            "evidenceSource": "file",
+            "observationKind": "computed",
+            "liveChain": false,
+            "label": "Local check of the supplied file. Not a live chain observation."
+          }
+        },
+        {
+          "id": "compose.allowed_envs",
+          "ladder": "NOT_PROVEN",
+          "title": "allowed_envs was not in the registered configuration",
+          "inference": false,
+          "plainEnglish": "The configuration that was read has no allowed_envs field, so this check cannot say whether host env injection is narrow.",
+          "evidence": [
+            {
+              "label": "app_compose.allowed_envs",
+              "detail": "absent"
+            }
+          ],
+          "provenance": {
+            "evidenceSource": "file",
+            "observationKind": "computed",
+            "liveChain": false,
+            "label": "Local check of the supplied file. Not a live chain observation."
+          }
+        },
+        {
+          "id": "contract.approver",
+          "ladder": "NOT_PROVEN",
+          "title": "Who can call approve_codehash was not proven",
+          "inference": false,
+          "plainEnglish": "No owner view was loaded, so the contract's own check for approve_codehash was not proven. The account has 1 full-access key and 1 key that can call approve_codehash. A full-access key can change the contract. This is the registered key set when it was loaded, not a live observation.",
+          "evidence": [],
+          "provenance": {
+            "evidenceSource": "file",
+            "observationKind": "file",
+            "liveChain": false,
+            "label": "Equality of values in the supplied file. Not a live chain observation."
+          }
+        },
+        {
+          "id": "contract.code",
+          "ladder": "NOT_PROVEN",
+          "title": "Contract code hash is not a known Shade template",
+          "inference": false,
+          "plainEnglish": "code_hash 2HkUtRxzdaucz8YqQUB24g5Crnn4NiuY2b7fp7SAVFeT does not match a known Shade template hash in this build (shade-contract-template @ 35758f3). Other Shade contracts exist. A miss is not a judgement of the registered configuration. The file supplied this code_hash. This run did not call view_account.",
+          "evidence": [
+            {
+              "label": "code_hash",
+              "detail": "2HkUtRxzdaucz8YqQUB24g5Crnn4NiuY2b7fp7SAVFeT"
+            }
+          ],
+          "provenance": {
+            "evidenceSource": "file",
+            "observationKind": "computed",
+            "liveChain": false,
+            "label": "Comparison of a supplied code hash with a published template. Not a live chain observation."
+          }
+        },
+        {
+          "id": "contract.remove",
+          "ladder": "NOT_PROVEN",
+          "title": "remove_codehash was not proven",
+          "inference": false,
+          "plainEnglish": "Whether remove_codehash exists, and whether it appears in history, was not proven. This input did not include a method probe or approval history for it. This is history of the registered contract when history was loaded, not a live observation.",
+          "evidence": [],
+          "provenance": {
+            "evidenceSource": "file",
+            "observationKind": "file",
+            "liveChain": false,
+            "label": "Equality of values in the supplied file. Not a live chain observation."
+          }
+        },
+        {
+          "id": "freshness.registration",
+          "ladder": "NOT_PROVEN",
+          "title": "Attestation is proven at registration only",
+          "inference": false,
+          "plainEnglish": "The registration time is 2025-09-27T03:54:14.000Z. The attestation age at 2026-11-05T12:00:00.000Z is 404 days. valid_until_ms applies to a Shade v2 agent view, and this report has none. No live guest endpoint was named. Phala blocks public guest-agent routes by default. Glassbox did not send a nonce. A registration is not a live process. Proven at registration only.",
+          "evidence": [
+            {
+              "label": "Phala post-mortem",
+              "url": "https://phala.com/posts/2026-10-post-mortem-dstack-guest-agent-vulnerability",
+              "detail": "public guest-agent routes blocked by default"
+            }
+          ],
+          "provenance": {
+            "evidenceSource": "unavailable",
+            "observationKind": "unavailable",
+            "liveChain": false,
+            "label": "Not a live chain observation."
+          }
+        },
+        {
+          "id": "measurements.approved",
+          "ladder": "NOT_PROVEN",
+          "title": "No on-contract list of approved TDX measurements",
+          "inference": false,
+          "plainEnglish": "This Shade v1 interface does not expose a view of approved TDX measurements. The codehash check, when it succeeds, covers the app image digest only.",
+          "evidence": [],
+          "provenance": {
+            "evidenceSource": "file",
+            "observationKind": "file",
+            "liveChain": false,
+            "label": "Equality of values in the supplied file. Not a live chain observation."
+          }
+        },
+        {
+          "id": "measurements.provenance",
+          "ladder": "NOT_PROVEN",
+          "title": "OS image provenance is unknown",
+          "inference": false,
+          "plainEnglish": "No os_image_hash was present, and MRTD and RTMR0–RTMR2 did not match Shade's 0.5.7 or 0.5.8 tables. The release is unknown. Unknown is not a known fixed image. The file supplied these measurement fields. This run did not read them from chain.",
+          "evidence": [
+            {
+              "label": "os_image_hash",
+              "detail": "Not present. The published fixed images are the dstack 0.5.12 family and dstack 0.6.1, and they are identified by this hash."
+            },
+            {
+              "label": "mrtd",
+              "detail": "Present, and not in the Shade 0.5.7 or 0.5.8 tables. Those tables are the vulnerable range this build can name. A miss is not a known fixed image."
+            },
+            {
+              "label": "rtmr0",
+              "detail": "Present, and not in the Shade 0.5.7 or 0.5.8 tables. Those tables are the vulnerable range this build can name. A miss is not a known fixed image."
+            },
+            {
+              "label": "rtmr1",
+              "detail": "Present, and not in the Shade 0.5.7 or 0.5.8 tables. Those tables are the vulnerable range this build can name. A miss is not a known fixed image."
+            },
+            {
+              "label": "rtmr2",
+              "detail": "Present, and not in the Shade 0.5.7 or 0.5.8 tables. Those tables are the vulnerable range this build can name. A miss is not a known fixed image."
+            }
+          ],
+          "provenance": {
+            "evidenceSource": "file",
+            "observationKind": "computed",
+            "liveChain": false,
+            "label": "Local check of the supplied file. Not a live chain observation."
+          }
+        },
+        {
+          "id": "mpc.allowlist",
+          "ladder": "NOT_PROVEN",
+          "title": "Registered image digests were not on the MPC allowlist",
+          "inference": false,
+          "plainEnglish": "None of the pinned image digests in the registered configuration appear on v1.signer or v1.signer-prod.testnet. That list is a different system's docker allowlist. Absence here is not a judgement of the Shade registration. These rows came from a captured snapshot, not a new read.",
+          "evidence": [
+            {
+              "label": "v1.signer (mainnet)",
+              "url": "https://nearblocks.io/address/v1.signer",
+              "detail": "536d528f19cff6a45f384fb225e8a331e5554b9da45196d0fae148d191e8b36d expiry no expiry (none); 4572d8de226e20870d6961a1e0f364cd77817d4cf53fdba8001f56c75695089d expiry 2026-11-06T13:14:49.000Z (active)"
+            },
+            {
+              "label": "v1.signer-prod.testnet (testnet)",
+              "url": "https://testnet.nearblocks.io/address/v1.signer-prod.testnet",
+              "detail": "536d528f19cff6a45f384fb225e8a331e5554b9da45196d0fae148d191e8b36d expiry no expiry (none); 4572d8de226e20870d6961a1e0f364cd77817d4cf53fdba8001f56c75695089d expiry 2026-11-05T12:59:03.000Z (active)"
+            },
+            {
+              "label": "Related work",
+              "url": "https://github.com/dreyyyy1/measure",
+              "detail": "dreyyyy1/measure"
+            }
+          ],
+          "provenance": {
+            "evidenceSource": "file",
+            "observationKind": "file",
+            "liveChain": false,
+            "label": "Equality of values in the supplied file. Not a live chain observation."
+          }
+        },
+        {
+          "id": "runtime.observed",
+          "ladder": "NOT_PROVEN",
+          "title": "What the account is executing now was not observed",
+          "inference": false,
+          "plainEnglish": "Glassbox did not take a live guest quote. Phala blocks public guest-agent routes by default, and a reachable endpoint would still be a different fact from the registered configuration.",
+          "evidence": [
+            {
+              "label": "Phala post-mortem",
+              "url": "https://phala.com/posts/2026-10-post-mortem-dstack-guest-agent-vulnerability",
+              "detail": "public guest-agent routes blocked by default"
+            }
+          ],
+          "provenance": {
+            "evidenceSource": "unavailable",
+            "observationKind": "unavailable",
+            "liveChain": false,
+            "label": "Not a live chain observation."
+          }
+        },
+        {
+          "id": "tdx.fresh",
+          "ladder": "NOT_PROVEN",
+          "title": "TCB status now was not checked",
+          "inference": false,
+          "plainEnglish": "Fresh collateral was not attached, so the registered configuration's TCB status now was not checked.",
+          "evidence": [
+            {
+              "label": "Phala PCCS",
+              "url": "https://pccs.phala.network",
+              "detail": "allowlisted; caller URLs are not accepted"
+            }
+          ],
+          "provenance": {
+            "evidenceSource": "file",
+            "observationKind": "computed",
+            "liveChain": false,
+            "label": "Verification of supplied quote bytes. Not a live chain observation."
+          }
+        },
+        {
+          "id": "codehash.approved",
+          "ladder": "PROVEN",
+          "title": "App codehash is in approve_codehash history",
+          "inference": false,
+          "plainEnglish": "The file records codehash 2a2f4704345359172f31e992188c60c2cbff4c2151dceeabccf472bad8031243, and an approve_codehash row in that file has the same value. This run did not call get_agent or re-read that transaction. On Shade v1 this is the app image digest, not a TDX measurement.",
+          "evidence": [
+            {
+              "label": "codehash in the file",
+              "detail": "2a2f4704345359172f31e992188c60c2cbff4c2151dceeabccf472bad8031243"
+            },
+            {
+              "label": "approve_codehash row in the file",
+              "detail": "6pVb8TT7JDKNTeevK3EmnBg2kymBXivLSkNuD2rZLDa8"
+            }
+          ],
+          "provenance": {
+            "evidenceSource": "file",
+            "observationKind": "file",
+            "liveChain": false,
+            "label": "Equality of values in the supplied file. Not a live chain observation."
+          }
+        },
+        {
+          "id": "compose.debug_images",
+          "ladder": "PROVEN",
+          "title": "Registered images are not debug or dev images",
+          "inference": false,
+          "plainEnglish": "Image names and tags were checked for debug, dbg, and dev. None matched.",
+          "evidence": [
+            {
+              "label": "mattdlockyer/shade-agent-api@sha256:a86e3a4300b069c08d629a38d61a3d780f7992eaf36aa505e4527e466553e2e5"
+            },
+            {
+              "label": "jwaup/votron@sha256:2a2f4704345359172f31e992188c60c2cbff4c2151dceeabccf472bad8031243"
+            }
+          ],
+          "provenance": {
+            "evidenceSource": "file",
+            "observationKind": "computed",
+            "liveChain": false,
+            "label": "Local check of the supplied file. Not a live chain observation."
+          }
+        },
+        {
+          "id": "compose.hash",
+          "ladder": "PROVEN",
+          "title": "Compose hash matches the registered event",
+          "inference": false,
+          "plainEnglish": "The compose-hash event payload equals the sha256 recorded for the on-chain app_compose string (cdfac6870932559754412f5571b45818c26f93da9cf6247d919679d6960bbb78). Secret-looking values were removed from the local copy, so this match is against the chain string, not against that redacted copy. This run did not re-read the registration from chain.",
+          "evidence": [
+            {
+              "label": "Registration transaction",
+              "url": "https://testnet.nearblocks.io/txns/HczqYXdRBZfyTtnQiPqGRXe3zEhvwHu3hyCUkqMq8VjN",
+              "detail": "HczqYXdRBZfyTtnQiPqGRXe3zEhvwHu3hyCUkqMq8VjN"
+            }
+          ],
+          "provenance": {
+            "evidenceSource": "file",
+            "observationKind": "computed",
+            "liveChain": false,
+            "label": "Verification of supplied registration bytes. Not a live chain observation."
+          }
+        },
+        {
+          "id": "compose.plaintext_secrets",
+          "ladder": "PROVEN",
+          "title": "No plaintext secret values in the registered configuration",
+          "inference": false,
+          "plainEnglish": "Secret-looking entries were checked for literal values. A ${NAME} reference, a $VAR reference, or a name with no value is not plaintext. No literal value is copied into this report.",
+          "evidence": [],
+          "provenance": {
+            "evidenceSource": "file",
+            "observationKind": "computed",
+            "liveChain": false,
+            "label": "Local check of the supplied file. Not a live chain observation."
+          }
+        },
+        {
+          "id": "images.pin",
+          "ladder": "PROVEN",
+          "title": "Registered images are pinned by digest",
+          "inference": false,
+          "plainEnglish": "All 2 image references in the registered configuration use a sha256 digest.",
+          "evidence": [
+            {
+              "label": "mattdlockyer/shade-agent-api@sha256:a86e3a4300b069c08d629a38d61a3d780f7992eaf36aa505e4527e466553e2e5",
+              "detail": "a86e3a4300b069c08d629a38d61a3d780f7992eaf36aa505e4527e466553e2e5"
+            },
+            {
+              "label": "jwaup/votron@sha256:2a2f4704345359172f31e992188c60c2cbff4c2151dceeabccf472bad8031243",
+              "detail": "2a2f4704345359172f31e992188c60c2cbff4c2151dceeabccf472bad8031243"
+            }
+          ],
+          "provenance": {
+            "evidenceSource": "file",
+            "observationKind": "computed",
+            "liveChain": false,
+            "label": "Local check of the supplied file. Not a live chain observation."
+          }
+        },
+        {
+          "id": "measurements.quote_match",
+          "ladder": "PROVEN",
+          "title": "Quote measurements match the registered tcb_info",
+          "inference": false,
+          "plainEnglish": "MRTD and RTMR0 through RTMR3 inside the verified quote equal the values stored with the registration.",
+          "evidence": [
+            {
+              "label": "Registration transaction",
+              "url": "https://testnet.nearblocks.io/txns/HczqYXdRBZfyTtnQiPqGRXe3zEhvwHu3hyCUkqMq8VjN",
+              "detail": "HczqYXdRBZfyTtnQiPqGRXe3zEhvwHu3hyCUkqMq8VjN"
+            }
+          ],
+          "provenance": {
+            "evidenceSource": "file",
+            "observationKind": "computed",
+            "liveChain": false,
+            "label": "Verification of supplied quote bytes. Not a live chain observation."
+          }
+        },
+        {
+          "id": "rtmr.replay",
+          "ladder": "PROVEN",
+          "title": "RTMR replay matches the registered values",
+          "inference": false,
+          "plainEnglish": "Replaying the event log with SHA-384(current || event digest), starting from 48 zero bytes, reproduces registered RTMR0 through RTMR3. RTMR3 covers the app events, including compose-hash.",
+          "evidence": [
+            {
+              "label": "Registration transaction",
+              "url": "https://testnet.nearblocks.io/txns/HczqYXdRBZfyTtnQiPqGRXe3zEhvwHu3hyCUkqMq8VjN",
+              "detail": "HczqYXdRBZfyTtnQiPqGRXe3zEhvwHu3hyCUkqMq8VjN"
+            }
+          ],
+          "provenance": {
+            "evidenceSource": "file",
+            "observationKind": "computed",
+            "liveChain": false,
+            "label": "Verification of supplied registration bytes. Not a live chain observation."
+          }
+        },
+        {
+          "id": "shade.interface",
+          "ladder": "PROVEN",
+          "title": "Account interface is shade-v1",
+          "inference": false,
+          "plainEnglish": "Loaded from a Glassbox capture file. Chain state was not re-read. Secret-looking env values in the stored app compose were removed before the file was written.",
+          "evidence": [
+            {
+              "label": "Account",
+              "url": "https://testnet.nearblocks.io/address/ac-sandbox.votron.testnet"
+            },
+            {
+              "label": "code_hash",
+              "detail": "2HkUtRxzdaucz8YqQUB24g5Crnn4NiuY2b7fp7SAVFeT"
+            },
+            {
+              "label": "View methods present",
+              "detail": "get_agent"
+            }
+          ],
+          "provenance": {
+            "evidenceSource": "file",
+            "observationKind": "file",
+            "liveChain": false,
+            "label": "Equality of values in the supplied file. Not a live chain observation."
+          }
+        },
+        {
+          "id": "tdx.advisories",
+          "ladder": "PROVEN",
+          "title": "No advisory IDs were returned",
+          "inference": false,
+          "plainEnglish": "No advisory IDs were returned for the TCB levels that verified.",
+          "evidence": [
+            {
+              "label": "Registration transaction",
+              "url": "https://testnet.nearblocks.io/txns/HczqYXdRBZfyTtnQiPqGRXe3zEhvwHu3hyCUkqMq8VjN",
+              "detail": "HczqYXdRBZfyTtnQiPqGRXe3zEhvwHu3hyCUkqMq8VjN"
+            }
+          ],
+          "provenance": {
+            "evidenceSource": "file",
+            "observationKind": "computed",
+            "liveChain": false,
+            "label": "Verification of supplied quote bytes. Not a live chain observation."
+          }
+        },
+        {
+          "id": "tdx.debug",
+          "ladder": "PROVEN",
+          "title": "Registered quote is not a debug TD",
+          "inference": false,
+          "plainEnglish": "The quote's TDX debug bit is clear.",
+          "evidence": [
+            {
+              "label": "Registration transaction",
+              "url": "https://testnet.nearblocks.io/txns/HczqYXdRBZfyTtnQiPqGRXe3zEhvwHu3hyCUkqMq8VjN",
+              "detail": "HczqYXdRBZfyTtnQiPqGRXe3zEhvwHu3hyCUkqMq8VjN"
+            }
+          ],
+          "provenance": {
+            "evidenceSource": "file",
+            "observationKind": "computed",
+            "liveChain": false,
+            "label": "Verification of supplied quote bytes. Not a live chain observation."
+          }
+        },
+        {
+          "id": "tdx.qe_identity",
+          "ladder": "PROVEN",
+          "title": "QE identity verified",
+          "inference": false,
+          "plainEnglish": "QE identity is mandatory in @phala/dcap-qvl 0.7.1 (GHSA-796p-j2gh-9m2q, fixed in 0.3.9). This quote verified, so the QE identity signature, issuer chain, and MRSIGNER, ISVPRODID, and ISVSVN policy were checked. The check is not optional.",
+          "evidence": [
+            {
+              "label": "Registration transaction",
+              "url": "https://testnet.nearblocks.io/txns/HczqYXdRBZfyTtnQiPqGRXe3zEhvwHu3hyCUkqMq8VjN",
+              "detail": "HczqYXdRBZfyTtnQiPqGRXe3zEhvwHu3hyCUkqMq8VjN"
+            }
+          ],
+          "provenance": {
+            "evidenceSource": "file",
+            "observationKind": "computed",
+            "liveChain": false,
+            "label": "Verification of supplied quote bytes. Not a live chain observation."
+          }
+        },
+        {
+          "id": "tdx.registration",
+          "ladder": "PROVEN",
+          "title": "TCB status at registration is UpToDate",
+          "inference": false,
+          "plainEnglish": "The registered configuration's TCB status at registration (2025-09-27T03:54:14.000Z) is UpToDate. TCB status is a verdict in this report. It is not informational.",
+          "evidence": [
+            {
+              "label": "Registration transaction",
+              "url": "https://testnet.nearblocks.io/txns/HczqYXdRBZfyTtnQiPqGRXe3zEhvwHu3hyCUkqMq8VjN",
+              "detail": "HczqYXdRBZfyTtnQiPqGRXe3zEhvwHu3hyCUkqMq8VjN"
+            }
+          ],
+          "provenance": {
+            "evidenceSource": "file",
+            "observationKind": "computed",
+            "liveChain": false,
+            "label": "Verification of supplied quote bytes. Not a live chain observation."
+          }
+        },
+        {
+          "id": "tdx.report_data",
+          "ladder": "PROVEN",
+          "title": "Quote report data binds the registering account",
+          "inference": false,
+          "plainEnglish": "The quote's report data is the ASCII account id 5ed6f9115c34750601502ca651d57df67836924ca0f3cf9fad27e23a7368c8a6, the account id recorded in this file. This run did not read that registration from chain.",
+          "evidence": [
+            {
+              "label": "Registration transaction",
+              "url": "https://testnet.nearblocks.io/txns/HczqYXdRBZfyTtnQiPqGRXe3zEhvwHu3hyCUkqMq8VjN",
+              "detail": "HczqYXdRBZfyTtnQiPqGRXe3zEhvwHu3hyCUkqMq8VjN"
+            }
+          ],
+          "provenance": {
+            "evidenceSource": "file",
+            "observationKind": "computed",
+            "liveChain": false,
+            "label": "Verification of supplied quote bytes. Not a live chain observation."
+          }
+        },
+        {
+          "id": "tdx.signature",
+          "ladder": "PROVEN",
+          "title": "Quote signature verified",
+          "inference": false,
+          "plainEnglish": "The quote signature verified with @phala/dcap-qvl 0.7.1 against the collateral stored with the registration. The quote and the collateral came from this file. This run did not fetch them from chain.",
+          "evidence": [
+            {
+              "label": "Registration transaction",
+              "url": "https://testnet.nearblocks.io/txns/HczqYXdRBZfyTtnQiPqGRXe3zEhvwHu3hyCUkqMq8VjN",
+              "detail": "HczqYXdRBZfyTtnQiPqGRXe3zEhvwHu3hyCUkqMq8VjN"
+            }
+          ],
+          "provenance": {
+            "evidenceSource": "file",
+            "observationKind": "computed",
+            "liveChain": false,
+            "label": "Verification of supplied quote bytes. Not a live chain observation."
+          }
+        }
+      ],
+      "approvalHistory": [],
+      "limitations": [
+        "Findings that cite a quote or an app compose describe the registered configuration. They do not establish what the account is executing now.",
+        "A valid TDX quote proves a TDX-attested registered configuration. It does not prove an honest operator. See the threat-model paragraph.",
+        "Glassbox does not judge payment correctness, and it has no payment or send step. That is Gideon (https://github.com/Adelekejr/Gideon-near), a separate NEAR pre-send checker by the same builder.",
+        "Comparisons with Shade's 0.5.7/0.5.8 table use that project's published measurements. Heuristics are marked on the finding.",
+        "This report was built from a file or pasted JSON. A PROVEN row compares values in that input, or verifies a quote carried in it. It is not a fresh chain read."
+      ],
+      "sources": [
+        "@phala/dcap-qvl 0.7.1 (Apache-2.0) for TDX quote verification. QE identity is mandatory. TCB status is enforced. PCCS allowlist: https://pccs.phala.network, https://api.trustedservices.intel.com, https://certificates.trustedservices.intel.com.",
+        "Input: local JSON. Chain history was not queried.",
+        "Shade measurement tables: shade-agent-cli (Apache-2.0), dstack 0.5.7 and 0.5.8 only.",
+        "https://phala.com/posts/2026-10-post-mortem-dstack-guest-agent-vulnerability",
+        "TEE.fail: https://tee.fail/"
+      ],
+      "attribution": []
+    }
+  }
+}

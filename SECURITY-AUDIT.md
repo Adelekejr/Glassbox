@@ -6,6 +6,8 @@ Date: 2026-11-05. Scope: this repository (`packages/core`, `packages/cli`, `pack
 
 This is a review of our code and dependencies. It does not describe an attack against any third-party service, and it does not claim that a live target was broken into.
 
+The dependency counts in section 9 are an earlier pass on the same calendar day. The re-run is [Dependency audit re-run](#dependency-audit-re-run-2026-11-05t222543z). Do not quote section 9 as that re-run. Open findings 1–8 were not re-tested as code in the re-run. PR #12 (`eec040a`) later recorded finding provenance, stopped MCP from reading local files, and added deployment-wide audit admission.
+
 ## How this was checked
 
 - Read the audit path from the web route, MCP tool, and CLI into `auditTarget` / `buildReport`, plus quote verification, history fetches, and report rendering.
@@ -55,7 +57,7 @@ Recommendation: if the tool should not be a file reader, accept only account ids
 
 **4. The web API is still an unauthenticated proxy to public RPC, NearBlocks, and Phala PCCS if it is ever exposed.**
 
-Evidence: `apps/web/app/api/audit/route.ts`. `apps/web/README.md` says not to deploy. This pull request does not deploy it.
+Evidence: `apps/web/app/api/audit/route.ts`. At the time of this pass, `apps/web/README.md` said not to deploy. This pull request did not deploy it. The public demo and the admission modes are recorded in the re-run note at the top of this file.
 
 The new limit is 10 requests per minute inside one Node process. It resets on restart, it is not shared across instances, and a client that omits `Content-Length` is only stopped after Next has buffered the body (the target string is then capped at 2 MB). One accepted account audit still performs the paced NearBlocks reads inside that one request.
 
@@ -83,9 +85,9 @@ Recommendation: add `ACCESS_KEY` (with the existing `API_CODEHASH` exception) an
 
 **8. The web response has no extra security headers.**
 
-Evidence: `apps/web/next.config.ts` sets transpile and webpack only. There is no `Content-Security-Policy`, `X-Content-Type-Options`, or frame policy. Rendering goes through React text nodes (`apps/web/components/Ladder.tsx:67`), which is the control that matters for the report. A CSP still belongs on a deployed origin. Do not add one blindly: Next's dev runtime uses inline scripts, and a strict policy needs a browser check.
+Evidence at the time of this pass: `apps/web/next.config.ts` set transpile and webpack only. There was no `Content-Security-Policy`, `X-Content-Type-Options`, or frame policy. Rendering goes through React text nodes (`apps/web/components/Ladder.tsx:67`), which is the control that matters for the report. A later change adds those headers. `script-src` and `style-src` allow `'unsafe-inline'` because the theme bootstrap and the Next.js runtime inject inline content. HSTS stays with Vercel.
 
-**9. Dependency advisories (lockfile, 2026-11-05).** `pnpm audit` reported 1 critical, 5 high, 5 moderate, 1 low. Nothing below was reproduced as a reachable bug in Glassbox. No advisory was "fixed" by editing the lockfile; the paths are nested where an override can break Next or the sandbox.
+**9. Dependency advisories (lockfile, earlier pass on 2026-11-05).** Superseded by the re-run section. Do not quote this subsection as that re-run. The command that produced these sentences reported 1 critical, 5 high, 5 moderate, 1 low. Nothing below was reproduced as a reachable bug in Glassbox. No advisory was "fixed" by editing the lockfile; the paths are nested where an override can break Next or the sandbox.
 
 | Advisory severity | Package (installed) | Advisory | Where it sits | Exposure here |
 | --- | --- | --- | --- | --- |
@@ -114,9 +116,30 @@ Evidence: `apps/web/next.config.ts` sets transpile and webpack only. There is no
 - **Quote trust anchor:** Glassbox uses `new QuoteVerifier()` with no custom root. Verification failure is no longer reported as **PROVEN** measurements, debug, or report-data binding.
 - **RTMR replay** of a bad digest is caught and becomes **NOT PROVEN** (`packages/core/src/report.ts` `replayFinding`), not a process crash.
 - **NearBlocks:** method names come from a fixed list (`approvalMethodsFor`), calls are spaced (default 10.5 s), two pages max, and the report attributes NearBlocks only when that API was used.
-- **Supply chain:** `packageManager` is `pnpm@10.33.4`. `pnpm.onlyBuiltDependencies` allows install scripts only for `esbuild`, `near-sandbox`, `near-workspaces`, and `secp256k1`. A frozen install ran the esbuild postinstall and the secp256k1 install and no others. The lockfile is version 9.0. Package resolutions checked here carry `integrity` hashes. No `git+`, `http://`, or non-registry tarball URL showed up in the lockfile.
+- **Supply chain:** `packageManager` is `pnpm@10.33.4`. Install scripts were limited to `esbuild`, `near-sandbox`, `near-workspaces`, and `secp256k1`. A frozen install ran the esbuild postinstall and the secp256k1 install and no others. The lockfile is version 9.0. Package resolutions checked here carry `integrity` hashes. No `git+`, `http://`, or non-registry tarball URL showed up in the lockfile. The re-run section records the move of that allowlist to `allowBuilds` in `pnpm-workspace.yaml`. The four names are unchanged.
 - **Read-only chain client:** `NearClient` posts JSON-RPC `query`, `tx`, and `block`. It does not sign and does not send a transaction (`packages/core/src/near/rpc.ts`).
 - **Wording tests still pass.** Fixture and CLI reports still fail the suite if they contain "hacked" or "currently running".
+
+## Dependency audit re-run (2026-11-05T22:25:43Z)
+
+Commands, on this checkout, pnpm 10.33.4, Node v22.23.4:
+
+- `pnpm audit` — 290 dependencies in the report metadata. **1 critical, 5 high, 5 moderate, 1 low.**
+- `pnpm audit --prod` — 204 dependencies in the report metadata. **0 critical, 3 high, 2 moderate, 1 low.**
+
+The full-audit severity totals match the earlier same-day note in section 9. They are listed again because these commands were run at `2026-11-05T22:25:43Z`. Section 9 is not this re-run. Nothing below was turned into a proof-of-concept. No dependency version was changed.
+
+`pnpm install --frozen-lockfile` with the allowlist in `pnpm-workspace.yaml` completed without a warning that a `package.json` `pnpm` field was ignored. The esbuild postinstall and the secp256k1 install ran. `dangerouslyAllowAllBuilds` is not set. The pin stays `pnpm@10.33.4`.
+
+| Audit | Severity | Installed | Advisory | Path pnpm printed | Why it was left |
+| --- | --- | --- | --- | --- | --- |
+| full | Critical | `tar` 7.5.13 | [GHSA-23hp-3jrh-7fpw](https://github.com/advisories/GHSA-23hp-3jrh-7fpw). Also high [GHSA-8x88-c5mf-7j5w](https://github.com/advisories/GHSA-8x88-c5mf-7j5w), [GHSA-r292-9mhp-454m](https://github.com/advisories/GHSA-r292-9mhp-454m). Moderate [GHSA-vmf3-w455-68vh](https://github.com/advisories/GHSA-vmf3-w455-68vh), [GHSA-w8wr-v893-vjvp](https://github.com/advisories/GHSA-w8wr-v893-vjvp), [GHSA-gvwx-54wh-qm9j](https://github.com/advisories/GHSA-gvwx-54wh-qm9j). Newest patched line in this report: `tar` >= 7.5.21. Registry latest seen while checking: 7.5.22. | `packages/core > near-sandbox > tar` | `near-sandbox` 0.3.4 is a devDependency and depends on `tar` 7.5.13. `near-sandbox` 0.3.5 still depends on `tar` 7.5.13. This path is absent from `pnpm audit --prod`. No override was added. |
+| full and prod | High | `postcss` 8.4.31 | [GHSA-6g55-p6wh-862q](https://github.com/advisories/GHSA-6g55-p6wh-862q), [GHSA-r28c-9q8g-f849](https://github.com/advisories/GHSA-r28c-9q8g-f849). Moderate [GHSA-qx2v-qp2m-jg93](https://github.com/advisories/GHSA-qx2v-qp2m-jg93), [GHSA-fxqj-rqcc-2cmp](https://github.com/advisories/GHSA-fxqj-rqcc-2cmp). Newest patched line in this report: `postcss` >= 8.5.23. | `apps/web > next > postcss` | `next` 15.5.29 is the latest Next 15 and depends on `postcss` 8.4.31. `next` 16.4.5 depends on `postcss` 8.5.23. Next 16 was not taken. No PostCSS override was added. |
+| full and prod | High | `zod` 3.25.76 | [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5). Patched line in this report: `zod` >= 4.6.6. | `packages/mcp > zod` | 3.25.76 is the latest 3.x. `@modelcontextprotocol/sdk` 1.32.2 (current latest) declares `zod` `^3.25 \|\| ^4.0`. The audit output listed this one path. Zod 4 was not taken. `check_agent` validates a string and an enum. |
+| full | Low | `elliptic` 6.6.1 | [GHSA-848j-6mx2-7j84](https://github.com/advisories/GHSA-848j-6mx2-7j84). This report's patched range is `<0.0.0` (no patched release). | `packages/core > near-api-js > @near-js/crypto > secp256k1 > elliptic` | Dev path, through the sandbox test's `near-api-js`. No patched version to install. |
+| prod | Low | `elliptic` 6.6.1 | Same advisory. | `packages/core > @phala/dcap-qvl > elliptic` | Production path is quote verification. The advisory describes ECDSA generation. No patched version to install. |
+
+The same change sets response headers in `apps/web/next.config.ts`: `X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options`, `Permissions-Policy`, and a same-origin Content-Security-Policy. `script-src` and `style-src` include `'unsafe-inline'`. A production `next start` was loaded in headless Chrome. The saved-sample control ran, a rejected audit left that report in place, and the console reported no Content-Security-Policy refusal. HSTS is not set here.
 
 ## Not done
 

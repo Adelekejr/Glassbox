@@ -1,3 +1,12 @@
 packages:
   - "packages/*"
   - "apps/*"
+
+# pnpm 10.26+ reads build approval here. The package.json "pnpm" field is ignored.
+# true runs that package's install scripts. false records a reviewed denial.
+# Packages omitted from this map stay blocked. This is not dangerouslyAllowAllBuilds.
+allowBuilds:
+  esbuild: true
+  near-sandbox: true
+  near-workspaces: true
+  secp256k1: true

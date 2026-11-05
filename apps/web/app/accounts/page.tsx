@@ -20,10 +20,11 @@ export default function AccountsPage() {
       <main id="main">
         <section className="page-head" aria-labelledby="page-title">
           <div className="wrap">
-            <div className="eyebrow reveal"><span className="tick" aria-hidden="true" /><span className="label">Saved live index · {strip.generatedAt}</span></div>
+            <div className="eyebrow reveal"><span className="tick" aria-hidden="true" /><span className="label">Saved seven-account snapshot · {strip.generatedAt.slice(0, 16).replace("T", " ")} UTC</span></div>
             <h1 id="page-title" className="reveal">Account list</h1>
             <p className="sentence reveal">{t.sentence}</p>
             <p className="note reveal">{strip.note}</p>
+            <p className="note reveal">This list is that saved snapshot of seven accounts. Smoke targets such as worker.outlayer.testnet, and the MPC allowlists, are not in it.</p>
           </div>
         </section>
         <section aria-label="Totals and accounts" style={{ paddingBottom: 96 }}>

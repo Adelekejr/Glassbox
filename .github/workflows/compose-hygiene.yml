@@ -1,5 +1,7 @@
 name: Compose hygiene
 
+# This workflow runs Node 22. package.json engines allows Node 20 or newer for local use.
+
 on:
   push:
   pull_request:

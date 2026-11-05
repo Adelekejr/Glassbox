@@ -264,6 +264,8 @@ h1, h2, h3 { margin: 0; font-family: var(--font-display); font-weight: 700; colo
 .chip:active { transform: scale(0.97); }
 .chip.is-file { font-family: var(--font-ui); font-size: 0.8125rem; font-weight: 500; }
 .form-error { margin-top: var(--s-3); color: var(--risky); font-size: var(--fs-sm); }
+.report-status { margin-bottom: var(--s-4); font-size: var(--fs-sm); color: var(--text-2); line-height: 1.55; }
+.report-status.is-error { color: var(--risky); }
 
 /* proof strip (hero side) */
 .strip { padding: 0; }
