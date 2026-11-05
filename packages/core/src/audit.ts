@@ -1,4 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
+import { CHANGE_METHOD_NAMES } from "./checks/contract.js";
+import { probeLiveGuest, unattemptedLiveObservation } from "./checks/liveness.js";
 import { MPC_TARGETS } from "./checks/mpc.js";
 import { fetchFreshCollateral } from "./checks/tdx.js";
 import { parseCompose, sha256Hex } from "./evidence/compose.js";
@@ -42,6 +44,13 @@ export interface AuditOptions {
   skipHistory?: boolean;
   /** Skip the public MPC allowlist reads. */
   skipMpc?: boolean;
+  /** Record anchor intent. Does not send a transaction. */
+  anchorIntent?: boolean;
+  /**
+   * Optional https Phala guest URL. Off-allowlist values are not fetched.
+   * Callers of the web and MCP paths must not set this from user JSON.
+   */
+  liveEndpoint?: string;
   /** Defaults to final. Tests against a local sandbox may use optimistic. */
   finality?: "final" | "optimistic";
   nearblocksIntervalMs?: number;
@@ -65,7 +74,7 @@ export async function auditAccount(accountId: string, options: AuditOptions = {}
   for (const network of networks) {
     try {
       const bundle = await collectAccount(accountId, network, options);
-      return buildReport(bundle, { now: options.now });
+      return buildReport(bundle, reportOptions(options));
     } catch (error) {
       if (error instanceof AccountNotFoundError && !options.network && !detectNetwork(accountId)) {
         lastNotFound = error;
@@ -83,7 +92,7 @@ export async function auditFile(path: string, options: AuditOptions = {}): Promi
   try {
     parsed = JSON.parse(text) as unknown;
   } catch {
-    return buildReport(bundleFromLooseText(path, text), { now: options.now });
+    return buildReport(bundleFromLooseText(path, text), reportOptions(options));
   }
   return auditValue(parsed, { ...options, label: path });
 }
@@ -99,7 +108,11 @@ export async function auditTarget(target: string, options: AuditOptions = {}): P
 
 export async function auditValue(value: unknown, options: AuditOptions & { label?: string } = {}): Promise<Report> {
   const bundle = bundleFromJson(value, options.label ?? "pasted-json");
-  return buildReport(bundle, { now: options.now });
+  return buildReport(bundle, reportOptions(options));
+}
+
+function reportOptions(options: AuditOptions): { now?: Date; anchorIntent?: boolean } {
+  return { now: options.now, anchorIntent: options.anchorIntent };
 }
 
 async function collectAccount(accountId: string, network: Network, options: AuditOptions): Promise<EvidenceBundle> {
@@ -167,8 +180,20 @@ async function collectAccount(accountId: string, network: Network, options: Audi
   }
 
   const infoView = probeMap.get("get_contract_info");
+  let ownerId: string | undefined;
   if (infoView?.ok && infoView.value && typeof infoView.value === "object") {
-    requiresTee = Boolean((infoView.value as { requires_tee?: boolean }).requires_tee);
+    const info = infoView.value as { requires_tee?: boolean; owner_id?: unknown; owner?: unknown; ownerId?: unknown };
+    requiresTee = Boolean(info.requires_tee);
+    ownerId = readOwnerId(info);
+  }
+  const changeMethods: { name: string; exists: boolean }[] = [];
+  for (const name of CHANGE_METHOD_NAMES) {
+    try {
+      const view = await client.viewFunction(accountId, name, {});
+      changeMethods.push({ name, exists: methodExists(view) });
+    } catch {
+      // An RPC failure is not MethodNotFound. Leave the method unprobed.
+    }
   }
   const measurementView = probeMap.get("get_approved_measurements");
   if (measurementView?.ok && Array.isArray(measurementView.value)) {
@@ -230,6 +255,10 @@ async function collectAccount(accountId: string, network: Network, options: Audi
     shadeDetail += " get_contract_info says requires_tee is true.";
   }
 
+  const live = options.liveEndpoint
+    ? await probeLiveGuest(options.liveEndpoint, options.fetch)
+    : unattemptedLiveObservation();
+
   return {
     target: accountId,
     network,
@@ -237,6 +266,9 @@ async function collectAccount(accountId: string, network: Network, options: Audi
     shadeDetail,
     codeHash: account.code_hash,
     globalContractHash: account.global_contract_hash ?? null,
+    ownerId,
+    changeMethods: changeMethods.length > 0 ? changeMethods : undefined,
+    live,
     methodsPresent: present,
     registration,
     registrationCount,
@@ -414,6 +446,13 @@ async function readMpcAllowlists(options: AuditOptions): Promise<MpcAllowlist[]>
   return lists;
 }
 
+function readOwnerId(value: { owner_id?: unknown; owner?: unknown; ownerId?: unknown }): string | undefined {
+  for (const candidate of [value.owner_id, value.owner, value.ownerId]) {
+    if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
+  }
+  return undefined;
+}
+
 function readBlockHeight(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) return value;
   if (typeof value === "string" && /^\d{1,16}$/.test(value)) {
@@ -460,48 +499,60 @@ function bundleFromJson(value: unknown, label: string): EvidenceBundle {
   const normalized = normalizeRegistrationArgs(value);
   if (normalized?.quoteHex || normalized?.tcbInfo) {
     const compose = normalized.tcbInfo?.app_compose ? parseCompose(normalized.tcbInfo.app_compose) : null;
-    return baseBundle(label, {
-      shade: "unknown",
-      shadeDetail: "This file looks like Shade registration arguments (quote, collateral, or tcb_info). It was not read from chain in this run.",
-      registration: {
-        quoteHex: normalized.quoteHex,
-        collateral: normalized.collateral,
-        checksum: normalized.checksum,
-        tcbInfo: normalized.tcbInfo,
-        appComposeSha256: normalized.appComposeSha256,
-        appComposeRedacted: false,
-      },
-      compose,
-      historySource: "file",
-    });
+    return withAttachedCodes(
+      value,
+      baseBundle(label, {
+        shade: "unknown",
+        shadeDetail: "This file looks like Shade registration arguments (quote, collateral, or tcb_info). It was not read from chain in this run.",
+        registration: {
+          quoteHex: normalized.quoteHex,
+          collateral: normalized.collateral,
+          checksum: normalized.checksum,
+          tcbInfo: normalized.tcbInfo,
+          appComposeSha256: normalized.appComposeSha256,
+          appComposeRedacted: false,
+        },
+        compose,
+        historySource: "file",
+      }),
+    );
   }
   const tcb = normalizeTcb(value);
   const compose = parseCompose(value);
   if (tcb?.event_log || tcb?.mrtd || tcb?.os_image_hash) {
-    return baseBundle(label, {
-      shade: "unknown",
-      shadeDetail: "This file looks like a tcb_info or attestation object. It was not read from chain in this run.",
-      registration: { tcbInfo: tcb, appComposeSha256: tcb.app_compose ? sha256Hex(tcb.app_compose) : undefined },
-      compose: tcb.app_compose ? parseCompose(tcb.app_compose) : compose,
-      historySource: "file",
-    });
+    return withAttachedCodes(
+      value,
+      baseBundle(label, {
+        shade: "unknown",
+        shadeDetail: "This file looks like a tcb_info or attestation object. It was not read from chain in this run.",
+        registration: { tcbInfo: tcb, appComposeSha256: tcb.app_compose ? sha256Hex(tcb.app_compose) : undefined },
+        compose: tcb.app_compose ? parseCompose(tcb.app_compose) : compose,
+        historySource: "file",
+      }),
+    );
   }
   if (compose) {
-    return baseBundle(label, {
-      shade: "unknown",
-      shadeDetail: "This file looks like an app compose or a deployment description. It was not read from chain in this run.",
-      registration: null,
-      compose,
-      historySource: "file",
-    });
+    return withAttachedCodes(
+      value,
+      baseBundle(label, {
+        shade: "unknown",
+        shadeDetail: "This file looks like an app compose or a deployment description. It was not read from chain in this run.",
+        registration: null,
+        compose,
+        historySource: "file",
+      }),
+    );
   }
-  return baseBundle(label, {
-    shade: "unknown",
-    shadeDetail: "The JSON did not look like a registration, an app compose, or a deployment.",
-    registration: null,
-    compose: null,
-    historySource: "file",
-  });
+  return withAttachedCodes(
+    value,
+    baseBundle(label, {
+      shade: "unknown",
+      shadeDetail: "The JSON did not look like a registration, an app compose, or a deployment.",
+      registration: null,
+      compose: null,
+      historySource: "file",
+    }),
+  );
 }
 
 interface CaptureFile {
@@ -567,6 +618,25 @@ function bundleFromLooseText(label: string, text: string): EvidenceBundle {
     compose,
     historySource: "file",
   });
+}
+
+function withAttachedCodes(value: unknown, bundle: EvidenceBundle): EvidenceBundle {
+  if (!value || typeof value !== "object") return bundle;
+  const record = value as Record<string, unknown>;
+  const app = firstAttached(record.codehash, record.agent_codehash);
+  const contract = firstAttached(record.code_hash, record.contract_code_hash, record.codeHash);
+  if (app && !bundle.agentView?.codehash) {
+    bundle.agentView = { ...bundle.agentView, codehash: app };
+  }
+  if (contract && !bundle.codeHash) bundle.codeHash = contract;
+  return bundle;
+}
+
+function firstAttached(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return undefined;
 }
 
 function baseBundle(target: string, patch: Partial<EvidenceBundle> & Pick<EvidenceBundle, "shade" | "shadeDetail">): EvidenceBundle {

@@ -108,6 +108,7 @@ export function signReport(report: Report, key?: SigningKey): { envelope: Signed
       reportSha256: sha256,
       network: body.inputs.network,
       contract: body.inputs.contract,
+      intent: report.anchor?.intent === true,
     }),
   };
   return { envelope, key: signingKey };

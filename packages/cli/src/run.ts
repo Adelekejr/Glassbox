@@ -4,10 +4,13 @@ import {
   auditAccount,
   auditFile,
   auditValue,
+  ANCHOR_INSTRUCTIONS,
   FIXTURE_INDEX_PATHS,
   defaultIndexPaths,
   buildAgentIndexFromFiles,
   crawlAgentIndex,
+  diffReports,
+  formatDiff,
   formatReport,
   renderIndexHtml,
   signReport,
@@ -20,6 +23,7 @@ export interface ParsedArgs {
   json: boolean;
   help: boolean;
   sign: boolean;
+  anchor: boolean;
   out?: string;
   network?: Network;
   target?: string;
@@ -27,9 +31,10 @@ export interface ParsedArgs {
 
 export function usage(): string {
   return [
-    "glassbox <account-or-file> [--json] [--sign] [--out report.json] [--network testnet|mainnet]",
+    "glassbox <account-or-file> [--json] [--sign] [--anchor] [--out report.json] [--network testnet|mainnet]",
     "glassbox verify <report.json> [--offline]",
     "glassbox check <file> --fail-on risky",
+    "glassbox diff <left> <right> [--json]",
     "glassbox index [--live] [--out proof-strip.json] [--html proof-strip.html]",
     "",
     "Read-only auditor for AI-agent contracts on NEAR.",
@@ -39,8 +44,10 @@ export function usage(): string {
     "Use - to read JSON from stdin.",
     "--json prints the report. It stays the report when --sign is set.",
     "--sign writes a signed report file. The key stays on this computer.",
+    "--anchor records that you asked to publish the report hash later. It does not send a transaction.",
     "verify checks the hash and signature, then re-reads the registration from archival RPC.",
     "check fails when the named rung is present. The default fixture path needs no chain.",
+    "diff compares two accounts or two JSON files: compose, measurements, codehash, and findings.",
     "index --live crawls the known accounts. Without --live it uses local fixtures.",
   ].join("\n");
 }
@@ -49,6 +56,7 @@ export function parseArgs(argv: string[]): ParsedArgs | { error: string } {
   let json = false;
   let help = false;
   let sign = false;
+  let anchor = false;
   let out: string | undefined;
   let network: Network | undefined;
   const positional: string[] = [];
@@ -64,6 +72,10 @@ export function parseArgs(argv: string[]): ParsedArgs | { error: string } {
     }
     if (arg === "--sign") {
       sign = true;
+      continue;
+    }
+    if (arg === "--anchor") {
+      anchor = true;
       continue;
     }
     if (arg === "--pccs" || arg === "--pccs-url") {
@@ -90,13 +102,14 @@ export function parseArgs(argv: string[]): ParsedArgs | { error: string } {
     positional.push(arg);
   }
   if (positional.length > 1) return { error: "Pass one account id or one file." };
-  return { json, help, sign, out, network, target: positional[0] };
+  return { json, help, sign, anchor, out, network, target: positional[0] };
 }
 
 export async function run(argv: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
   const head = argv[0];
   if (head === "verify") return runVerify(argv.slice(1));
   if (head === "check") return runCheck(argv.slice(1));
+  if (head === "diff") return runDiff(argv.slice(1));
   if (head === "index") return runIndex(argv.slice(1));
   return runAudit(argv);
 }
@@ -117,11 +130,12 @@ async function runAudit(argv: string[]): Promise<{ code: number; stdout: string;
         `Reading ${parsed.target} from public NEAR RPC. History uses NearBlocks and is spaced to stay within the free limit.`,
       );
     }
+    const auditOptions = { network: parsed.network, anchorIntent: parsed.anchor };
     const report = file
-      ? await auditFile(parsed.target as string, { network: parsed.network })
+      ? await auditFile(parsed.target as string, auditOptions)
       : parsed.target === "-"
-        ? await auditStdin(parsed.network)
-        : await auditAccount(parsed.target, { network: parsed.network });
+        ? await auditStdin(parsed.network, parsed.anchor)
+        : await auditAccount(parsed.target, auditOptions);
     if (parsed.sign) {
       const { envelope, key } = signReport(report);
       const out = parsed.out ?? "report.json";
@@ -131,6 +145,10 @@ async function runAudit(argv: string[]): Promise<{ code: number; stdout: string;
         stderrLines.push(`A new signing key was created at ${key.path}. Keep that file private. It is not part of the repo.`);
       }
       stderrLines.push(`Signed report written to ${out}.`);
+    }
+    if (parsed.anchor) {
+      stderrLines.push(report.anchor.reason);
+      stderrLines.push(ANCHOR_INSTRUCTIONS);
     }
     const stderr = stderrLines.length ? `${stderrLines.join("\n")}\n` : "";
     return { code: 0, stdout: render(report, parsed.json), stderr };
@@ -286,9 +304,69 @@ function parseRung(value: string): "risky" | "notProven" | "proven" | null {
   return null;
 }
 
-async function auditStdin(network?: Network): Promise<Report> {
+async function auditStdin(network?: Network, anchor = false): Promise<Report> {
   const text = readFileSync(0, "utf8");
-  return auditValue(JSON.parse(text) as unknown, { network, label: "stdin" });
+  return auditValue(JSON.parse(text) as unknown, { network, label: "stdin", anchorIntent: anchor });
+}
+
+async function runDiff(argv: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
+  let json = false;
+  let help = false;
+  let network: Network | undefined;
+  const positional: string[] = [];
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--json") {
+      json = true;
+      continue;
+    }
+    if (arg === "--help" || arg === "-h") {
+      help = true;
+      continue;
+    }
+    if (arg === "--anchor" || arg === "--sign") {
+      return {
+        code: 2,
+        stdout: "",
+        stderr: "diff does not sign and does not send a transaction. Compare the two reports, then sign one of them separately if you need a signature.\n",
+      };
+    }
+    if (arg === "--pccs" || arg === "--pccs-url") {
+      return { code: 2, stdout: "", stderr: "A caller-supplied PCCS URL is not accepted.\n" };
+    }
+    if (arg === "--network") {
+      const value = argv[index + 1];
+      if (value !== "testnet" && value !== "mainnet") {
+        return { code: 2, stdout: "", stderr: "--network must be testnet or mainnet.\n" };
+      }
+      network = value;
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("-")) return { code: 2, stdout: "", stderr: `Unknown argument ${arg}.\n\n${usage()}\n` };
+    positional.push(arg);
+  }
+  if (help) return { code: 0, stdout: `${usage()}\n`, stderr: "" };
+  if (positional.length !== 2) return { code: 2, stdout: "", stderr: "Pass two accounts or two JSON files.\n" };
+  try {
+    const left = await loadTarget(positional[0] as string, network);
+    const right = await loadTarget(positional[1] as string, network);
+    const diff = diffReports(left, right);
+    return {
+      code: 0,
+      stdout: json ? `${JSON.stringify(diff, null, 2)}\n` : formatDiff(diff),
+      stderr: "",
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { code: 1, stdout: "", stderr: `${message}\n` };
+  }
+}
+
+async function loadTarget(target: string, network?: Network): Promise<Report> {
+  if (target === "-") return auditStdin(network);
+  if (existsSync(target)) return auditFile(target, { network });
+  return auditAccount(target, { network });
 }
 
 function render(report: Report, json: boolean): string {

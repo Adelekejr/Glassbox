@@ -83,6 +83,37 @@ test("check --fail-on risky passes a pinned compose and fails a loose one", asyn
   assert.match(risky.stdout, /risky/);
 });
 
+test("diff compares two files and --anchor does not send a transaction", async () => {
+  const pinned = join(here, "../../../fixtures/compose/pinned.json");
+  const loose = join(here, "../../../fixtures/compose/loose.json");
+  const diff = await run(["diff", pinned, loose]);
+  assert.equal(diff.code, 0, diff.stderr);
+  assert.match(diff.stdout, /Glassbox diff/);
+  assert.match(diff.stdout, /public_logs: false → true/);
+  assert.doesNotMatch(diff.stdout, /supersecretvalue99/);
+  assert.doesNotMatch(diff.stdout, /hacked/i);
+  assert.doesNotMatch(diff.stdout, /currently running/i);
+  const left = join(here, "../../core/test/fixtures/diff-left.json");
+  const right = join(here, "../../core/test/fixtures/diff-right.json");
+  const measured = await run(["diff", left, right, "--json"]);
+  assert.equal(measured.code, 0, measured.stderr);
+  const parsed = JSON.parse(measured.stdout) as { kind: string; measurements: string[] };
+  assert.equal(parsed.kind, "diff");
+  assert.ok(parsed.measurements.some((line) => line.startsWith("os_image_hash:")));
+  const anchored = await run([fixture, "--anchor"]);
+  assert.equal(anchored.code, 0, anchored.stderr);
+  assert.match(anchored.stdout, /Threat model/);
+  assert.match(anchored.stdout, /tee\.fail/i);
+  assert.match(anchored.stderr, /does not send a transaction/);
+  assert.match(anchored.stderr, /does not spend gas/);
+  assert.doesNotMatch(anchored.stderr, /broadcast/);
+  const json = await run([fixture, "--anchor", "--json"]);
+  const report = JSON.parse(json.stdout) as { threatModel: string; anchor: { status: string; intent: boolean } };
+  assert.match(report.threatModel, /DDR5/);
+  assert.equal(report.anchor.status, "skipped");
+  assert.equal(report.anchor.intent, true);
+});
+
 test("index from fixtures does not call the network and hides secret values", async () => {
   const dir = mkdtempSync(join(tmpdir(), "glassbox-index-"));
   const jsonPath = join(dir, "proof-strip.json");

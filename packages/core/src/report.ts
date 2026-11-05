@@ -1,5 +1,8 @@
 import { isDebugImage, isSecretEnvName } from "./evidence/compose.js";
 import { DCAP_QVL_VERSION, PINNED_PCCS_URL, verifierMetadata } from "./checks/pccs.js";
+import { assessApprover, assessContractCode, assessRemove } from "./checks/contract.js";
+import { unattemptedLiveObservation } from "./checks/liveness.js";
+import { assessProvenance } from "./checks/provenance.js";
 import { isZeroMeasurement, measurementsMatch } from "./evidence/measurements.js";
 import { eventPayload, hasEvent } from "./evidence/registration.js";
 import { assessAccessKeys } from "./checks/access-keys.js";
@@ -9,10 +12,15 @@ import { measurementsEqual, replayAll } from "./checks/rtmr.js";
 import { verifyQuoteAt } from "./checks/tdx.js";
 import { upgradePlainEnglish } from "./checks/upgrade.js";
 import { matchShadeMeasurements } from "./data/shade-measurements.js";
+import { canonicalSha256 } from "./signed/canonical.js";
+import { planReportAnchor } from "./signed/anchor.js";
+import { buildCanonicalBody } from "./signed/report.js";
 import {
   GLASSBOX_VERSION,
   MEASURE_REPO_URL,
   PHALA_POSTMORTEM_URL,
+  TEE_FAIL_URL,
+  THREAT_MODEL_DISCLOSURE,
   accountUrl,
   advisoryUrl,
   isoFromUnixMs,
@@ -21,9 +29,11 @@ import {
   type EvidenceBundle,
   type EvidenceLink,
   type Finding,
+  type Freshness,
   type Ladder,
   type Measurements,
   type Report,
+  type ReportFacts,
   type ReportInputs,
 } from "./types.js";
 
@@ -39,14 +49,17 @@ export function presentCheck(report: Report): AgentCheck {
   return { overall: report.overall, summary: report.overallPlainEnglish, report };
 }
 
-export function buildReport(bundle: EvidenceBundle, options?: { now?: Date }): Report {
+export function buildReport(bundle: EvidenceBundle, options?: { now?: Date; anchorIntent?: boolean }): Report {
   const now = options?.now ?? new Date(bundle.generatedAt);
   const findings = [
     runtimeFinding(),
+    freshnessFinding(bundle, now),
     shadeFinding(bundle),
     ...attestationFindings(bundle, now),
     ...approvalFindings(bundle, now),
     ...composeFindings(bundle, now),
+    provenanceFinding(bundle),
+    ...contractFindings(bundle),
     accessFinding(bundle),
     mpcFinding(bundle, now),
   ].filter((finding): finding is Finding => finding !== null);
@@ -60,7 +73,7 @@ export function buildReport(bundle: EvidenceBundle, options?: { now?: Date }): R
   };
   const overall: Ladder = summary.risky > 0 ? "RISKY" : summary.notProven > 0 ? "NOT_PROVEN" : "PROVEN";
 
-  return {
+  const report: Report = {
     tool: "glassbox",
     version: GLASSBOX_VERSION,
     verifier: verifierMetadata(),
@@ -69,6 +82,14 @@ export function buildReport(bundle: EvidenceBundle, options?: { now?: Date }): R
     shade: bundle.shade,
     generatedAt: bundle.generatedAt,
     inputs: reportInputs(bundle),
+    threatModel: THREAT_MODEL_DISCLOSURE,
+    freshness: reportFreshness(bundle, now),
+    facts: reportFacts(bundle),
+    anchor: {
+      status: "skipped",
+      intent: false,
+      reason: "Report hash anchoring is off. Glassbox does not send a transaction.",
+    },
     summary,
     overall,
     overallPlainEnglish: `Highest rung on this ladder is ${overall.replace("_", " ")} (${summary.risky} risky, ${summary.notProven} not proven, ${summary.proven} proven). That is the strongest concern already listed. It is not a separate check.`,
@@ -77,12 +98,20 @@ export function buildReport(bundle: EvidenceBundle, options?: { now?: Date }): R
     approvalHistoryNote: bundle.approvalHistoryNote,
     limitations: [
       "Findings that cite a quote or an app compose describe the registered configuration. They do not establish what the account is executing now.",
+      "A valid TDX quote proves a TDX-attested registered configuration. It does not prove an honest operator. See the threat-model paragraph.",
       "Glassbox does not judge payment correctness. That is Gideon, a separate NEAR pre-send checker by the same builder.",
       "Comparisons with Shade's 0.5.7/0.5.8 table use that project's published measurements. Heuristics are marked on the finding.",
     ],
     sources: sourceLines(bundle),
     attribution: attributionLines(bundle),
   };
+  report.anchor = planReportAnchor({
+    reportSha256: canonicalSha256(buildCanonicalBody(report)),
+    network: report.network,
+    contract: report.inputs.contract,
+    intent: options?.anchorIntent,
+  });
+  return report;
 }
 
 export function formatReport(report: Report): string {
@@ -104,6 +133,24 @@ export function formatReport(report: Report): string {
   lines.push(
     "This report describes the registered configuration. It does not establish what the account is executing now.",
   );
+  lines.push("");
+  lines.push("Threat model");
+  lines.push(report.threatModel);
+  lines.push("");
+  lines.push("Freshness");
+  lines.push(
+    `Registration: ${report.freshness.registrationTime ?? "not loaded"}`,
+  );
+  lines.push(`Age:          ${report.freshness.attestationAge ?? "not computed"}`);
+  if (report.freshness.validUntil.length === 0) {
+    lines.push("valid_until:  none on this report");
+  } else {
+    for (const item of report.freshness.validUntil) {
+      lines.push(`valid_until:  ${item.accountId} ${item.validUntil}`);
+    }
+  }
+  lines.push("Proven at registration only.");
+  lines.push(report.freshness.live.detail);
   lines.push("");
   for (const ladder of LADDER_ORDER) {
     const group = report.findings.filter((finding) => finding.ladder === ladder);
@@ -150,6 +197,9 @@ export function formatReport(report: Report): string {
     for (const line of report.attribution) lines.push(line);
     lines.push("");
   }
+  lines.push("Report hash anchor");
+  lines.push(report.anchor.reason);
+  lines.push("");
   return lines.join("\n").trimEnd() + "\n";
 }
 
@@ -651,7 +701,7 @@ function dstackFinding(assessment: ReturnType<typeof assessDstack>): Finding {
     return make(
       "dstack.range",
       "PROVEN",
-      `Registered configuration is a fixed image (${assessment.label})`,
+      `Registered configuration is a known fixed image (${assessment.label})`,
       assessment.inference,
       assessment.detail,
       [{ label: "Fixed image list", detail: "dstack 0.5.12 (including dev and nvidia variants) and dstack 0.6.1" }],
@@ -1351,7 +1401,144 @@ function sourceLines(bundle: EvidenceBundle): string[] {
   if (bundle.historySource === "file") lines.push("Input: local JSON. Chain history was not queried.");
   lines.push("Shade measurement tables: shade-agent-cli (Apache-2.0), dstack 0.5.7 and 0.5.8 only.");
   lines.push(PHALA_POSTMORTEM_URL);
+  lines.push(`TEE.fail: ${TEE_FAIL_URL}`);
   return lines;
+}
+
+function provenanceFinding(bundle: EvidenceBundle): Finding {
+  const tcb = bundle.registration?.tcbInfo;
+  const osHash = tcb?.os_image_hash ?? eventPayload(tcb?.event_log, "os-image-hash");
+  const row = firstMeasurement(bundle);
+  const assessment = assessProvenance({
+    osImageHash: osHash ?? row?.osImageHash,
+    mrtd: tcb?.mrtd ?? row?.mrtd,
+    rtmr0: tcb?.rtmr0 ?? row?.rtmr0,
+    rtmr1: tcb?.rtmr1 ?? row?.rtmr1,
+    rtmr2: tcb?.rtmr2 ?? row?.rtmr2,
+  });
+  return make(
+    "measurements.provenance",
+    assessment.ladder,
+    assessment.title,
+    assessment.inference,
+    assessment.detail,
+    assessment.evidence.map((item) => ({ label: item.label, detail: item.detail })),
+  );
+}
+
+function firstMeasurement(bundle: EvidenceBundle): {
+  osImageHash?: string;
+  mrtd?: string;
+  rtmr0?: string;
+  rtmr1?: string;
+  rtmr2?: string;
+} | null {
+  const agent = bundle.v2Agents?.[0];
+  if (!agent) return null;
+  return {
+    mrtd: agent.measurements.mrtd,
+    rtmr0: agent.measurements.rtmr0,
+    rtmr1: agent.measurements.rtmr1,
+    rtmr2: agent.measurements.rtmr2,
+  };
+}
+
+function contractFindings(bundle: EvidenceBundle): Finding[] {
+  const historyLoaded = bundle.approvalHistory !== undefined;
+  const approver = assessApprover({
+    shade: bundle.shade,
+    target: bundle.target,
+    ownerId: bundle.ownerId,
+    accessKeys: bundle.accessKeys,
+    accessKeyError: bundle.accessKeyError,
+    approvalHistory: bundle.approvalHistory,
+    historyLoaded,
+  });
+  const removed = assessRemove({
+    shade: bundle.shade,
+    changeMethods: bundle.changeMethods,
+    approvalHistory: bundle.approvalHistory,
+    historyLoaded,
+  });
+  const code = assessContractCode({
+    codeHash: bundle.codeHash,
+    globalContractHash: bundle.globalContractHash,
+  });
+  return [approver, removed, code].map((item) =>
+    make(item.id, item.ladder, item.title, item.inference, item.plainEnglish, item.evidence),
+  );
+}
+
+function freshnessFinding(bundle: EvidenceBundle, now: Date): Finding {
+  const freshness = reportFreshness(bundle, now);
+  const when = freshness.registrationTime
+    ? `The registration time is ${freshness.registrationTime}. The attestation age at ${now.toISOString()} is ${freshness.attestationAge ?? "unreadable"}.`
+    : "Registration time was not loaded, so attestation age was not computed.";
+  const until =
+    freshness.validUntil.length > 0
+      ? ` The contract view names valid_until_ms for ${freshness.validUntil.map((item) => `${item.accountId} (${item.validUntil})`).join(", ")}.`
+      : bundle.v2Agents && bundle.v2Agents.length > 0
+        ? " valid_until_ms was not in the agent view."
+        : " valid_until_ms applies to a Shade v2 agent view, and this report has none.";
+  return make(
+    "freshness.registration",
+    "NOT_PROVEN",
+    "Attestation is proven at registration only",
+    false,
+    `${when}${until} ${freshness.live.detail}`,
+    [{ label: "Phala post-mortem", url: PHALA_POSTMORTEM_URL, detail: "public guest-agent routes blocked by default" }],
+  );
+}
+
+function reportFreshness(bundle: EvidenceBundle, now: Date): Freshness {
+  const seconds = bundle.registration?.timestampSec;
+  const registrationTime = typeof seconds === "number" ? (isoFromUnixMs(seconds * 1000) ?? null) : null;
+  const attestationAge = typeof seconds === "number" && registrationTime ? formatAge(seconds, now) : null;
+  const validUntil = (bundle.v2Agents ?? [])
+    .filter((agent) => agent.validUntilMs !== undefined)
+    .map((agent) => ({
+      accountId: agent.accountId,
+      validUntil: isoFromUnixMs(agent.validUntilMs ?? 0) ?? "unreadable",
+    }));
+  return {
+    registrationTime,
+    attestationAge,
+    validUntil,
+    provenAtRegistrationOnly: true,
+    live: bundle.live ?? unattemptedLiveObservation(),
+  };
+}
+
+function formatAge(fromSec: number, now: Date): string {
+  const ms = now.getTime() - fromSec * 1000;
+  if (!Number.isFinite(ms)) return "unreadable";
+  if (ms < 0) return "the registration time is after this report";
+  const days = Math.floor(ms / 86_400_000);
+  if (days >= 2) return `${days} days`;
+  const hours = Math.floor(ms / 3_600_000);
+  if (hours >= 1) return `${hours} hours`;
+  const minutes = Math.floor(ms / 60_000);
+  return `${minutes} minutes`;
+}
+
+function reportFacts(bundle: EvidenceBundle): ReportFacts {
+  const tcb = bundle.registration?.tcbInfo;
+  const row = firstMeasurement(bundle);
+  const osHash = tcb?.os_image_hash ?? eventPayload(tcb?.event_log, "os-image-hash") ?? null;
+  return {
+    appCodehash: bundle.agentView?.codehash ?? null,
+    contractCodeHash: bundle.codeHash ?? null,
+    osImageHash: osHash,
+    mrtd: tcb?.mrtd ?? row?.mrtd ?? null,
+    rtmr0: tcb?.rtmr0 ?? row?.rtmr0 ?? null,
+    rtmr1: tcb?.rtmr1 ?? row?.rtmr1 ?? null,
+    rtmr2: tcb?.rtmr2 ?? row?.rtmr2 ?? null,
+    publicLogs: bundle.compose?.publicLogs ?? null,
+    publicSysinfo: bundle.compose?.publicSysinfo ?? null,
+    images: (bundle.compose?.images ?? []).map((image) => image.ref),
+    dstackVersion: bundle.compose?.versionDeclared ? bundle.compose.dstackVersion : null,
+    secretEnvNames: (bundle.compose?.envNames ?? []).filter(isSecretEnvName),
+  };
 }
 
 function reportInputs(bundle: EvidenceBundle): ReportInputs {

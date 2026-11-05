@@ -1,0 +1,11 @@
+{
+  "codehash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "code_hash": "2HkUtRxzdaucz8YqQUB24g5Crnn4NiuY2b7fp7SAVFeT",
+  "tcb_info": {
+    "mrtd": "f06dfda6dce1cf904d4e2bab1dc370634cf95cefa2ceb2de2eee127c9382698090d7a4a13e14c536ec6c9c3c8fa87077",
+    "rtmr0": "68102e7b524af310f7b7d426ce75481e36c40f5d513a9009c046e9d37e31551f0134d954b496a3357fd61d03f07ffe96",
+    "rtmr1": "b598fde9491427341bc4683b75d10d3e36770af3a36a6954d8b6b7b22aa66358f13e1f172e51b7d6e6710d99a8d8532f",
+    "rtmr2": "9284cde236231d5ddace01104a440fd504df5182a2ad1ac3d2138b80c6a7864bd2c30f69041d8264217f3d24541580cf",
+    "app_compose": "{\"public_logs\":true,\"docker_compose_file\":\"services:\\n  app:\\n    image: nginx:latest\\n\"}"
+  }
+}
