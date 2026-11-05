@@ -35,6 +35,17 @@ let nearblocksNextAt = 0;
 
 const historyCache = new Map<string, { at: number; page: HistoryPage }>();
 const DEFAULT_CACHE_MS = 10 * 60 * 1000;
+const MAX_HISTORY_CACHE = 200;
+
+function rememberHistory(key: string, page: HistoryPage): void {
+  historyCache.delete(key);
+  while (historyCache.size >= MAX_HISTORY_CACHE) {
+    const oldest = historyCache.keys().next().value;
+    if (oldest === undefined) break;
+    historyCache.delete(oldest);
+  }
+  historyCache.set(key, { at: Date.now(), page });
+}
 
 function cacheTtlMs(): number {
   const raw = process.env.GLASSBOX_HISTORY_CACHE_MS;
@@ -91,7 +102,7 @@ export async function listMethodCalls(
     source: "nearblocks" as const,
     usedNearblocks: true,
   };
-  historyCache.set(key, { at: Date.now(), page });
+  rememberHistory(key, page);
   return page;
 }
 

@@ -19,23 +19,47 @@ export interface TdxVerification {
   error?: string;
 }
 
+const MAX_QUOTE_BYTES = 256 * 1024;
+
 export function quoteBytes(quoteHex: string): Buffer {
   const hex = quoteHex.trim().replace(/^0x/, "");
+  if (hex.length === 0 || hex.length > MAX_QUOTE_BYTES * 2) {
+    throw new Error("Quote hex length is outside the accepted range.");
+  }
   if (hex.length % 2 !== 0) throw new Error("Quote hex has an odd length.");
+  if (!/^[0-9a-fA-F]+$/.test(hex)) throw new Error("Quote hex has a non-hex character.");
   return Buffer.from(hex, "hex");
 }
 
+function rejected(error: string): TdxVerification {
+  return { ok: false, advisoryIds: [], debug: null, reportData: null, measurements: null, error };
+}
+
 export function verifyQuoteAt(quoteHex: string, collateral: unknown, nowSecs: number): TdxVerification {
-  const raw = quoteBytes(quoteHex);
-  const parsed = Quote.parse(raw);
+  let raw: Buffer;
+  let parsed: ReturnType<typeof Quote.parse>;
+  try {
+    raw = quoteBytes(quoteHex);
+    parsed = Quote.parse(raw);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return rejected(message);
+  }
   let debug = readDebug(parsed.report);
   const reportData = readReportData(parsed.report);
   const measurements = readMeasurements(parsed.report);
-  const normalized = normalizeCollateral(collateral);
+  let normalized: Collateral;
+  try {
+    normalized = normalizeCollateral(collateral);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return rejected(message);
+  }
+  const verifiedAt = Number.isFinite(nowSecs) ? nowSecs : 0;
   try {
     const verifier = new QuoteVerifier();
     if (debug) verifier.allowDebug(true);
-    const result = verifier.verify(raw, normalized, nowSecs);
+    const result = verifier.verify(raw, normalized, verifiedAt);
     debug = readDebug(result.report) ?? debug;
     return {
       ok: true,
@@ -50,7 +74,7 @@ export function verifyQuoteAt(quoteHex: string, collateral: unknown, nowSecs: nu
     if (/debug mode/i.test(message) && debug !== true) {
       try {
         const verifier = new QuoteVerifier().allowDebug(true);
-        const result = verifier.verify(raw, normalized, nowSecs);
+        const result = verifier.verify(raw, normalized, verifiedAt);
         return {
           ok: true,
           status: result.status,
@@ -61,17 +85,10 @@ export function verifyQuoteAt(quoteHex: string, collateral: unknown, nowSecs: nu
         };
       } catch (retryError) {
         const retryMessage = retryError instanceof Error ? retryError.message : String(retryError);
-        return {
-          ok: false,
-          advisoryIds: [],
-          debug: true,
-          reportData,
-          measurements,
-          error: retryMessage,
-        };
+        return rejected(retryMessage);
       }
     }
-    return { ok: false, advisoryIds: [], debug, reportData, measurements, error: message };
+    return rejected(message);
   }
 }
 

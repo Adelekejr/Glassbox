@@ -4,6 +4,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { checkAgent } from "../src/check.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixture = join(here, "../../core/test/fixtures/votron-registration.json");
@@ -36,6 +37,11 @@ test("check_agent returns the ladder for a pasted registration file", async () =
   } finally {
     await client.close();
   }
+});
+
+test("check_agent refuses a local file that is not JSON", async () => {
+  const wasm = join(here, "../../core/test/fixtures/shade-contract-template.wasm");
+  await assert.rejects(() => checkAgent({ target: wasm }), /json/i);
 });
 
 function textOf(content: unknown): string {

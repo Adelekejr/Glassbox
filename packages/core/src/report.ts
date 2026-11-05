@@ -14,6 +14,7 @@ import {
   PHALA_POSTMORTEM_URL,
   accountUrl,
   advisoryUrl,
+  isoFromUnixMs,
   txUrl,
   type ApprovedMeasurementRow,
   type EvidenceBundle,
@@ -168,11 +169,17 @@ function attestationFindings(bundle: EvidenceBundle, now: Date): Finding[] {
     ];
   }
 
-  const when = registration.timestampSec
-    ? `at registration (${new Date(registration.timestampSec * 1000).toISOString()})`
-    : "at the stored collateral's check time";
+  const registeredAt =
+    typeof registration.timestampSec === "number" ? isoFromUnixMs(registration.timestampSec * 1000) : undefined;
+  const when = registeredAt ? `at registration (${registeredAt})` : "at the stored collateral's check time";
   const stored = registration.collateral
-    ? verifyQuoteAt(registration.quoteHex, registration.collateral, registration.timestampSec ?? fallbackCollateralTime(registration.collateral))
+    ? verifyQuoteAt(
+        registration.quoteHex,
+        registration.collateral,
+        registeredAt && registration.timestampSec !== undefined
+          ? registration.timestampSec
+          : fallbackCollateralTime(registration.collateral),
+      )
     : null;
 
   const findings: Finding[] = [];
@@ -253,37 +260,72 @@ function attestationFindings(bundle: EvidenceBundle, now: Date): Finding[] {
     );
   }
 
-  const debug = stored?.debug ?? null;
-  if (debug === true) {
+  // Parsed quote fields are not evidence until QuoteVerifier accepts the signature.
+  // A crafted quote can parse and still fail verification.
+  const unverified = Boolean(stored && !stored.ok);
+  if (unverified) {
     findings.push(
       make(
         "tdx.debug",
-        "RISKY",
-        "TDX debug mode is set on the registered quote",
+        "NOT_PROVEN",
+        "Debug bit was not accepted",
         false,
-        "The quote's TDX debug bit is set. A debug TD is not a production attestation.",
+        "The quote did not verify, so the debug bit was not accepted.",
         txEvidence(bundle),
       ),
     );
-  } else if (debug === false) {
     findings.push(
       make(
-        "tdx.debug",
-        "PROVEN",
-        "Registered quote is not a debug TD",
+        "tdx.report_data",
+        "NOT_PROVEN",
+        "Quote report data was not accepted",
         false,
-        "The quote's TDX debug bit is clear.",
+        "The quote did not verify, so its report data was not treated as bound to an account.",
+        txEvidence(bundle),
+      ),
+    );
+    findings.push(
+      make(
+        "measurements.quote_match",
+        "NOT_PROVEN",
+        "Quote measurements were not accepted",
+        false,
+        "The quote did not verify, so its measurements were not compared as attested values.",
         txEvidence(bundle),
       ),
     );
   } else {
-    findings.push(
-      make("tdx.debug", "NOT_PROVEN", "Debug bit was not read", false, "The quote did not yield a TDX attributes field, so debug mode was not read."),
-    );
+    const debug = stored?.debug ?? null;
+    if (debug === true) {
+      findings.push(
+        make(
+          "tdx.debug",
+          "RISKY",
+          "TDX debug mode is set on the registered quote",
+          false,
+          "The quote's TDX debug bit is set. A debug TD is not a production attestation.",
+          txEvidence(bundle),
+        ),
+      );
+    } else if (debug === false) {
+      findings.push(
+        make(
+          "tdx.debug",
+          "PROVEN",
+          "Registered quote is not a debug TD",
+          false,
+          "The quote's TDX debug bit is clear.",
+          txEvidence(bundle),
+        ),
+      );
+    } else {
+      findings.push(
+        make("tdx.debug", "NOT_PROVEN", "Debug bit was not read", false, "The quote did not yield a TDX attributes field, so debug mode was not read."),
+      );
+    }
+    findings.push(reportDataFinding(bundle, stored?.reportData ?? null));
+    findings.push(quoteMatchFinding(bundle, stored?.measurements ?? null));
   }
-
-  findings.push(reportDataFinding(bundle, stored?.reportData ?? null));
-  findings.push(quoteMatchFinding(bundle, stored?.measurements ?? null));
   findings.push(replayFinding(bundle));
   findings.push(composeHashFinding(bundle));
   return findings;
@@ -518,7 +560,7 @@ function validityFinding(bundle: EvidenceBundle, now: Date): Finding | null {
       false,
       agents
         .map((agent) => {
-          const until = agent.validUntilMs ? new Date(agent.validUntilMs).toISOString() : "an unknown time";
+          const until = agent.validUntilMs !== undefined ? (isoFromUnixMs(agent.validUntilMs) ?? "an unreadable time") : "an unknown time";
           return `${agent.accountId} is ${agent.validity} until ${until}.`;
         })
         .join(" "),
@@ -531,7 +573,10 @@ function validityFinding(bundle: EvidenceBundle, now: Date): Finding | null {
     false,
     [
       ...invalid.map((agent) => `${agent.accountId} is ${agent.validity}.`),
-      ...expired.map((agent) => `${agent.accountId} validity ended at ${new Date(agent.validUntilMs ?? 0).toISOString()}.`),
+      ...expired.map(
+        (agent) =>
+          `${agent.accountId} validity ended at ${isoFromUnixMs(agent.validUntilMs ?? 0) ?? "an unreadable time"}.`,
+      ),
     ].join(" "),
   );
 }

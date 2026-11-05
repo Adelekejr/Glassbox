@@ -1,5 +1,5 @@
 import type { ApprovalEvent, ApprovedMeasurementRow, ShadeKind, ShadeV2Agent } from "../types.js";
-import { nsToSeconds } from "../types.js";
+import { isoFromUnixMs, nsToSeconds } from "../types.js";
 import type { HistoryCall } from "../near/history.js";
 
 export function approvalMethodsFor(shade: ShadeKind): string[] {
@@ -79,7 +79,7 @@ export function approvalEventsFromCalls(method: string, calls: HistoryCall[]): A
       txHash: call.hash,
       signer: call.signer,
       timestampNs: call.timestampNs,
-      timestampIso: seconds ? new Date(seconds * 1000).toISOString() : undefined,
+      timestampIso: seconds !== undefined ? isoFromUnixMs(seconds * 1000) : undefined,
       success: call.success,
       detail: summarizeApprovalArgs(call.args),
     };
