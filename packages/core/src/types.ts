@@ -57,6 +57,44 @@ export interface ReportInputs {
   freshCollateralSource: string | null;
 }
 
+export interface ReportAnchor {
+  status: "skipped";
+  /** True when the operator asked. This build still does not send a transaction. */
+  intent: boolean;
+  reason: string;
+}
+
+export interface LiveObservation {
+  attempted: boolean;
+  reachable: boolean;
+  detail: string;
+}
+
+export interface Freshness {
+  registrationTime: string | null;
+  attestationAge: string | null;
+  validUntil: { accountId: string; validUntil: string }[];
+  /** Always true. A registration is not a live observation. */
+  provenAtRegistrationOnly: true;
+  live: LiveObservation;
+}
+
+/** Non-secret fields a diff can line up. Env values are never copied here. */
+export interface ReportFacts {
+  appCodehash: string | null;
+  contractCodeHash: string | null;
+  osImageHash: string | null;
+  mrtd: string | null;
+  rtmr0: string | null;
+  rtmr1: string | null;
+  rtmr2: string | null;
+  publicLogs: boolean | null;
+  publicSysinfo: boolean | null;
+  images: string[];
+  dstackVersion: string | null;
+  secretEnvNames: string[];
+}
+
 export interface Report {
   tool: "glassbox";
   version: string;
@@ -68,6 +106,12 @@ export interface Report {
   generatedAt: string;
   /** Facts a signed report repeats: contract, transaction, collateral, tool versions live beside the checks. */
   inputs: ReportInputs;
+  /** Fixed TEE.fail paragraph. Present on every report. */
+  threatModel: string;
+  freshness: Freshness;
+  facts: ReportFacts;
+  /** On-chain report-hash anchor. Always skipped in this build. */
+  anchor: ReportAnchor;
   summary: { proven: number; notProven: number; risky: number };
   /** Highest rung present. Counts stay on `summary`; this is not a separate check. */
   overall: Ladder;
@@ -231,6 +275,12 @@ export interface EvidenceBundle {
   shadeDetail: string;
   codeHash?: string;
   globalContractHash?: string | null;
+  /** Owner named by get_contract_info, when that view returned one. */
+  ownerId?: string | null;
+  /** Change-method probes. Absent means this input was not probed. */
+  changeMethods?: { name: string; exists: boolean }[];
+  /** Live guest observation. Absent means no endpoint was tried. */
+  live?: LiveObservation;
   methodsPresent: string[];
   registration: RegistrationEvidence | null;
   registrationCount?: number;
@@ -260,6 +310,16 @@ export interface EvidenceBundle {
 
 export const PHALA_POSTMORTEM_URL =
   "https://phala.com/posts/2026-10-post-mortem-dstack-guest-agent-vulnerability";
+
+export const TEE_FAIL_URL = "https://tee.fail/";
+
+/**
+ * Fixed disclosure. A valid quote is a TDX-attested registered configuration.
+ * It is not proof of an honest operator. Wording stays inside HANDOFF.md:
+ * registered configuration, never "hacked".
+ */
+export const THREAT_MODEL_DISCLOSURE =
+  "A valid Intel TDX quote proves a TDX-attested registered configuration, not an honest operator. That includes a quote that carries a dstack context. TEE.fail showed that physical access to DDR5 memory can forge TDX quotes, including quotes for dstack contexts. See https://tee.fail/.";
 
 export const MEASURE_REPO_URL = "https://github.com/dreyyyy1/measure";
 

@@ -43,6 +43,7 @@ export interface AuditPayload {
       tcbStatus: string;
       pccsAllowlist: string[];
     };
+    threatModel?: string;
   };
 }
 
@@ -62,6 +63,7 @@ export function Ladder({ payload }: { payload: AuditPayload }) {
           status {report.verifier.tcbStatus}. PCCS allowlist: {report.verifier.pccsAllowlist.join(", ")}.
         </p>
       ) : null}
+      {report.threatModel ? <p>{report.threatModel}</p> : null}
       {ORDER.map((rung) => {
         const group = report.findings.filter((finding) => finding.ladder === rung);
         if (group.length === 0) return null;
