@@ -1,4 +1,4 @@
-import { auditTarget, isNearAccountId, presentCheck, type AgentCheck, type AuditOptions, type Network } from "core";
+import { auditAccount, auditValue, isNearAccountId, presentCheck, type AgentCheck, type AuditOptions, type Network } from "core";
 import { takeCheckSlot } from "./limit.js";
 
 export interface CheckAgentInput {
@@ -53,7 +53,8 @@ export async function checkAgent(input: CheckAgentInput, options: AuditOptions =
   if (!takeCheckSlot()) {
     throw new Error("Too many check_agent calls in this process. Wait a minute and retry.");
   }
-  const report = await auditTarget(target, {
+  // Same split as the web route. auditTarget also opens a path that exists on disk.
+  const auditOptions: AuditOptions = {
     network: input.network ?? options.network,
     now: options.now,
     skipFreshCollateral: options.skipFreshCollateral,
@@ -62,8 +63,19 @@ export async function checkAgent(input: CheckAgentInput, options: AuditOptions =
     nearblocksIntervalMs: options.nearblocksIntervalMs,
     rpcIntervalMs: options.rpcIntervalMs,
     finality: options.finality,
-  });
+  };
+  const report = jsonText ? await auditPastedJson(target, auditOptions) : await auditAccount(target, auditOptions);
   return presentCheck(report);
+}
+
+async function auditPastedJson(target: string, options: AuditOptions) {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(target) as unknown;
+  } catch {
+    throw new Error("Pasted JSON could not be parsed.");
+  }
+  return auditValue(parsed, { ...options, label: "pasted-json" });
 }
 
 function isUrl(value: string): boolean {
