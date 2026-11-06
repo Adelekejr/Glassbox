@@ -103,6 +103,97 @@ test("check_agent refuses a local file that is not JSON", async () => {
   await assert.rejects(() => checkAgent({ target: wasm }), /json/i);
 });
 
+test("check_agent does not read cwd package.json", async () => {
+  resetCheckLimiter();
+  const root = mkdtempSync(join(tmpdir(), "glassbox-mcp-cwd-"));
+  const canary = "SUPERSECRET-PACKAGE-JSON-CANARY";
+  const file = join(root, "package.json");
+  writeFileSync(
+    file,
+    JSON.stringify({ name: "glassbox-mcp", private: true, description: canary, marker: canary }),
+  );
+  const previous = process.cwd();
+  const originalFetch = globalThis.fetch;
+  const queries: { url: string; accountId?: string; requestType?: string }[] = [];
+  let mode: "missing" | "account" = "missing";
+  globalThis.fetch = (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    const parsed = readRpcBody(init);
+    queries.push({ url, accountId: parsed?.accountId, requestType: parsed?.requestType });
+    if (mode === "missing") {
+      return rpcJson({
+        error: { cause: { name: "UNKNOWN_ACCOUNT" }, message: "does not exist" },
+      });
+    }
+    if (parsed?.requestType === "view_account") {
+      return rpcJson({ result: { code_hash: "abc", storage_usage: 1 } });
+    }
+    if (parsed?.requestType === "view_access_key_list") {
+      return rpcJson({ result: { keys: [] } });
+    }
+    if (parsed?.requestType === "call_function") {
+      return rpcJson({
+        result: {
+          result: [],
+          error: "wasm execution failed with error: MethodResolveError(MethodNotFound)",
+        },
+      });
+    }
+    throw new Error(`unexpected rpc ${parsed?.requestType ?? "none"}`);
+  }) as typeof fetch;
+
+  try {
+    process.chdir(root);
+    try {
+      await assert.rejects(
+        () => checkAgent({ target: "package.json" }),
+        (error: unknown) => {
+          const message = error instanceof Error ? error.message : String(error);
+          assert.match(message, /No NEAR account "package\.json"/);
+          assert.doesNotMatch(message, new RegExp(canary));
+          assert.doesNotMatch(message, /glassbox-mcp/);
+          return true;
+        },
+      );
+    } finally {
+      process.chdir(previous);
+    }
+    assert.ok(queries.length >= 1);
+    assert.ok(queries.every((query) => query.accountId === "package.json"));
+    assert.ok(queries.every((query) => query.requestType === "view_account"));
+    assert.match(readFileSync(file, "utf8"), new RegExp(canary));
+
+    queries.length = 0;
+    resetCheckLimiter();
+    const pasted = await checkAgent({
+      target: JSON.stringify({ name: "pasted-probe", public_logs: false }),
+    });
+    assert.ok(pasted.overall === "RISKY" || pasted.overall === "NOT_PROVEN" || pasted.overall === "PROVEN");
+    assert.equal(pasted.report.target, "pasted-json");
+    assert.equal(pasted.report.network, "offline");
+    assert.equal(queries.length, 0);
+    assert.doesNotMatch(JSON.stringify(pasted), new RegExp(canary));
+
+    queries.length = 0;
+    mode = "account";
+    resetCheckLimiter();
+    const account = await checkAgent(
+      { target: "ac-sandbox.votron.testnet", network: "testnet" },
+      { skipHistory: true, skipMpc: true, skipFreshCollateral: true, rpcIntervalMs: 0 },
+    );
+    assert.equal(account.report.target, "ac-sandbox.votron.testnet");
+    assert.equal(account.report.network, "testnet");
+    assert.equal(account.report.facts.contractCodeHash, "abc");
+    assert.ok((account.report.methodProbes?.length ?? 0) > 0);
+    assert.ok(queries.length > 0);
+    assert.ok(queries.every((query) => query.accountId === "ac-sandbox.votron.testnet"));
+    assert.doesNotMatch(JSON.stringify(account), new RegExp(canary));
+  } finally {
+    process.chdir(previous);
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("check_agent refuses URLs, bad account ids, and a caller PCCS URL", async () => {
   resetCheckLimiter();
   await assert.rejects(() => checkAgent({ target: "https://pccs.evil.example/agent" }), /URL/);
@@ -123,6 +214,21 @@ test("check_agent rate-limits a burst", async () => {
   await assert.rejects(() => checkAgent({ target: body }), /Too many/);
   resetCheckLimiter();
 });
+
+function readRpcBody(init?: RequestInit): { accountId?: string; requestType?: string } | null {
+  if (!init?.body) return null;
+  const body = JSON.parse(String(init.body)) as {
+    params?: { account_id?: string; request_type?: string };
+  };
+  return { accountId: body.params?.account_id, requestType: body.params?.request_type };
+}
+
+function rpcJson(body: unknown): Response {
+  return new Response(JSON.stringify({ jsonrpc: "2.0", id: "glassbox", ...((body ?? {}) as object) }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+}
 
 function textOf(content: unknown): string {
   if (!Array.isArray(content)) return "";
