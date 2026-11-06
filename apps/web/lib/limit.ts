@@ -7,11 +7,14 @@ import { timingSafeEqual } from "node:crypto";
  * uses one of these modes:
  *
  * 1. Shared budget, when Upstash Redis or Vercel KV REST credentials are set.
- *    10 audits per minute and 2 in flight, counted for the whole deployment.
+ *    This is the preferred production limiter. 10 audits per minute and 2 in
+ *    flight, counted for the whole deployment. Redis wins when it is present,
+ *    including when GLASSBOX_PUBLIC_DEMO is also set.
  * 2. Restricted, when GLASSBOX_AUDIT_TOKEN is set and no shared store is configured.
  *    Callers must send header x-glassbox-audit-token. A process-local cap still applies.
  * 3. Explicit public demo, when GLASSBOX_PUBLIC_DEMO=1 and neither of the above is set.
- *    Anonymous, with the process-local cap. That cap is not deployment-wide.
+ *    Process-local demo mode. Anonymous, with the process-local cap. That cap
+ *    is not deployment-wide.
  * 4. Closed. None of the above: 403, and the handler does not call RPC.
  */
 export const AUDIT_WINDOW_MS = 60_000;

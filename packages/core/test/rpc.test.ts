@@ -93,6 +93,42 @@ test("approve and remove history is cached so NearBlocks is not called twice", a
   assert.equal(second.usedNearblocks, true);
 });
 
+test("NEAR RPC and history fetches pass redirect error", async () => {
+  const rpcInits: Array<RequestInit | undefined> = [];
+  const client = new NearClient({
+    network: "testnet",
+    endpoints: ["https://rpc.example"],
+    minIntervalMs: 0,
+    sleep: async () => undefined,
+    fetch: async (_input, init) => {
+      rpcInits.push(init);
+      return jsonResponse({ jsonrpc: "2.0", result: { code_hash: "abc" } });
+    },
+  });
+  await client.viewAccount("redirect.testnet");
+  assert.equal(rpcInits.length, 1);
+  assert.equal(rpcInits[0]?.redirect, "error");
+
+  const historyCalls: Array<{ url: string; redirect: RequestInit["redirect"] }> = [];
+  const fetchImpl: typeof fetch = async (input, init) => {
+    const url = String(input);
+    historyCalls.push({ url, redirect: init?.redirect });
+    if (url.includes("fastnear")) return jsonResponse({}, 404);
+    return jsonResponse({ txns: [] });
+  };
+  await listMethodCalls("testnet", "redirect-history.testnet", "approve_codehash", {
+    fetch: fetchImpl,
+    nearblocksIntervalMs: 0,
+    sleep: async () => undefined,
+  });
+  assert.equal(historyCalls.length, 2);
+  assert.ok(historyCalls.some((call) => call.url.includes("fastnear")));
+  assert.ok(historyCalls.some((call) => call.url.includes("nearblocks.io")));
+  for (const call of historyCalls) {
+    assert.equal(call.redirect, "error");
+  }
+});
+
 test("method-not-found is distinct from a panic, which means the method exists", async () => {
   const client = new NearClient({
     network: "testnet",

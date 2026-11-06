@@ -82,6 +82,7 @@ export class NearClient {
           method: "POST",
           headers: { "content-type": "application/json", accept: "application/json" },
           body: JSON.stringify({ jsonrpc: "2.0", id: "glassbox", method, params }),
+          redirect: "error",
         });
         const text = await response.text();
         if (response.status === 429 || response.status >= 500) {
