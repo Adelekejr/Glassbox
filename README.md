@@ -119,11 +119,15 @@ Anchoring the report hash on NEAR is a stub. `--sign` already hashes the canonic
 
 ## Diff
 
-`glassbox diff` takes two accounts or two JSON files and prints what changed. It lines up the compose (logs, images, declared version, secret-looking names), the measurements (`os_image_hash`, MRTD, RTMR0–RTMR2), the app codehash and the contract code hash, and the ladder findings. It does not send a transaction.
+`glassbox diff` takes two accounts, two JSON inputs, or two saved audit reports and prints what changed. It lines up the compose (logs, images, declared version, secret-looking names), the measurements (`os_image_hash`, MRTD, RTMR0–RTMR2), the app codehash and the contract code hash, and the ladder findings. For saved reports it also shows each check time and registration identity. When the registration transaction is the same, a changed `tdx.fresh` result is attributed to the TCB/collateral baseline; when identity is missing or different, Glassbox says it cannot make that attribution. It does not send a transaction.
 
 ```bash
 node packages/cli/bin/glassbox.js diff fixtures/compose/pinned.json fixtures/compose/loose.json
 node packages/cli/bin/glassbox.js diff packages/core/test/fixtures/diff-left.json packages/core/test/fixtures/diff-right.json
+node packages/cli/bin/glassbox.js your-agent.testnet --json > check-t1.json
+# Run the same audit later, then compare the two saved reports.
+node packages/cli/bin/glassbox.js your-agent.testnet --json > check-t2.json
+node packages/cli/bin/glassbox.js diff check-t1.json check-t2.json
 ```
 
 ## MCP
@@ -148,7 +152,7 @@ This pass did not call `check_agent` against the network. The saved seven-accoun
 
 The workflow runs on `main` with Node 22 and pnpm 10.33.4. Local `engines` allows Node 20 or newer. CI does not run a second Node version. The workflow is a CI gate. The public demo is https://glassbox-inky.vercel.app.
 
-The Action runs `glassbox check fixtures/compose/pinned.json --fail-on risky`. That file is a pinned compose. It does not call a chain. The job fails when the audit has a risky finding. `fixtures/compose/loose.json` is the example that fails the gate (unpinned image, public logs, a socket mount). The same workflow also runs `pnpm test` on pull requests and pushes. That script runs the package tests and `pnpm run typecheck`. The compose gate is unchanged.
+The Action runs `glassbox check fixtures/compose/pinned.json --fail-on risky`. That file is a pinned compose. It does not call a chain. The job fails when the audit has a risky finding. `fixtures/compose/loose.json` is the example that fails the gate (unpinned image, public logs, a socket mount). For audits that fetch fresh PCCS collateral, `--fail-on risky` may also fail on a collateral-only day when TCB status becomes OutOfDate even though the registration/configuration did not change; the report separates that under **Collateral freshness**. The gate and exit behavior are unchanged. The same workflow also runs `pnpm test` on pull requests and pushes. That script runs the package tests and `pnpm run typecheck`.
 
 ```bash
 node packages/cli/bin/glassbox.js check fixtures/compose/pinned.json --fail-on risky

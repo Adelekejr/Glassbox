@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import type { Report } from "core";
 import { parseArgs, run } from "../src/run.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -113,6 +114,79 @@ test("diff compares two files and --anchor does not send a transaction", async (
   assert.equal(report.anchor.status, "skipped");
   assert.equal(report.anchor.intent, true);
 });
+
+test("diff reads saved JSON reports and separates a TCB baseline move from the same registration", async () => {
+  const audited = await run([fixture, "--json"]);
+  assert.equal(audited.code, 0, audited.stderr);
+  const base = JSON.parse(audited.stdout) as Report;
+  const t1 = savedTcbSnapshot(base, "PROVEN", "Registered configuration's TCB is now UpToDate", "2026-11-05T10:00:00.000Z");
+  const t2 = savedTcbSnapshot(base, "RISKY", "Registered configuration's TCB is now OutOfDate", "2026-11-06T10:00:00.000Z");
+  const dir = mkdtempSync(join(tmpdir(), "glassbox-tcb-diff-"));
+  const t1Path = join(dir, "t1.json");
+  const t2Path = join(dir, "t2.json");
+  writeFileSync(t1Path, `${JSON.stringify(t1)}\n`);
+  writeFileSync(t2Path, `${JSON.stringify(t2)}\n`);
+
+  const text = await run(["diff", t1Path, t2Path]);
+  assert.equal(text.code, 0, text.stderr);
+  assert.match(text.stdout, /Collateral freshness \(TCB baseline\)/);
+  assert.match(text.stdout, /OutOfDate/);
+  assert.match(text.stdout, /registration transaction is unchanged/);
+
+  const json = await run(["diff", t1Path, t2Path, "--json"]);
+  assert.equal(json.code, 0, json.stderr);
+  const diff = JSON.parse(json.stdout) as {
+    registration: { identity: string };
+    collateralFreshness: { changed: boolean; attribution: string; left: string; right: string };
+  };
+  assert.equal(diff.registration.identity, "same");
+  assert.equal(diff.collateralFreshness.changed, true);
+  assert.equal(diff.collateralFreshness.attribution, "same-registration");
+  assert.match(diff.collateralFreshness.left, /UpToDate/);
+  assert.match(diff.collateralFreshness.right, /OutOfDate/);
+
+  const oldT1 = JSON.parse(JSON.stringify(t1)) as Record<string, unknown>;
+  const oldT2 = JSON.parse(JSON.stringify(t2)) as Record<string, unknown>;
+  delete (oldT1.facts as Record<string, unknown>).appComposeSha256;
+  delete (oldT2.facts as Record<string, unknown>).appComposeSha256;
+  const oldT1Path = join(dir, "old-t1.json");
+  const oldT2Path = join(dir, "old-t2.json");
+  writeFileSync(oldT1Path, `${JSON.stringify(oldT1)}\n`);
+  writeFileSync(oldT2Path, `${JSON.stringify(oldT2)}\n`);
+  const oldDiff = await run(["diff", oldT1Path, oldT2Path, "--json"]);
+  assert.equal(oldDiff.code, 0, oldDiff.stderr);
+  assert.equal(JSON.parse(oldDiff.stdout).registration.identity, "same");
+});
+
+function savedTcbSnapshot(
+  report: Report,
+  ladder: "PROVEN" | "NOT_PROVEN" | "RISKY",
+  title: string,
+  checkedAt: string,
+): Report {
+  const findings = report.findings.map((finding) =>
+    finding.id === "tdx.fresh" ? { ...finding, ladder, title, lane: "collateral-freshness" as const } : finding,
+  );
+  const summary = {
+    proven: findings.filter((finding) => finding.ladder === "PROVEN").length,
+    notProven: findings.filter((finding) => finding.ladder === "NOT_PROVEN").length,
+    risky: findings.filter((finding) => finding.ladder === "RISKY").length,
+  };
+  const overall = summary.risky > 0 ? "RISKY" : summary.notProven > 0 ? "NOT_PROVEN" : "PROVEN";
+  return {
+    ...report,
+    generatedAt: checkedAt,
+    inputs: {
+      ...report.inputs,
+      collateralFetchedAt: checkedAt,
+      freshCollateralSource: "https://pccs.phala.network",
+    },
+    findings,
+    summary,
+    overall,
+    overallPlainEnglish: `Highest rung on this ladder is ${overall.replace("_", " ")} (${summary.risky} risky, ${summary.notProven} not proven, ${summary.proven} proven). That is the strongest concern already listed. It is not a separate check.`,
+  };
+}
 
 test("index from fixtures does not call the network and hides secret values", async () => {
   const dir = mkdtempSync(join(tmpdir(), "glassbox-index-"));

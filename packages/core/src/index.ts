@@ -45,6 +45,7 @@ export {
   detectNetwork,
   isNearAccountId,
   type Finding,
+  type FindingLane,
   type FindingProvenance,
   type InputOrigin,
   type Ladder,

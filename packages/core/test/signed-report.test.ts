@@ -8,7 +8,7 @@ import { parseCompose, sha256Hex } from "../src/evidence/compose.js";
 import { planReportAnchor } from "../src/signed/anchor.js";
 import { canonicalJson, canonicalSha256 } from "../src/signed/canonical.js";
 import { loadOrCreateSigningKey } from "../src/signed/keys.js";
-import { signReport } from "../src/signed/report.js";
+import { buildCanonicalBody, signReport } from "../src/signed/report.js";
 import { networkForVerify, verifySignedReport } from "../src/signed/verify.js";
 import type { EvidenceBundle } from "../src/types.js";
 
@@ -68,6 +68,27 @@ test("canonical JSON ignores key order", () => {
   const right = canonicalSha256({ a: { c: 3, d: 2 }, b: 1 });
   assert.equal(left, right);
   assert.equal(canonicalJson({ b: 1, a: 2 }), '{"a":2,"b":1}');
+});
+
+test("signed check records preserve the collateral freshness lane", () => {
+  const report = buildReport(bundle(), { now: new Date(generatedAt) });
+  const freshnessFinding = {
+    id: "tdx.fresh",
+    ladder: "RISKY" as const,
+    lane: "collateral-freshness" as const,
+    title: "Registered configuration's TCB is now OutOfDate",
+    inference: false,
+    plainEnglish: "The same quote was checked against fresh collateral.",
+    evidence: [],
+    provenance: {
+      evidenceSource: "computed" as const,
+      observationKind: "computed" as const,
+      liveChain: false,
+      label: "Verified quote data.",
+    },
+  };
+  const body = buildCanonicalBody({ ...report, findings: [...report.findings, freshnessFinding] });
+  assert.equal(body.checks.find((check) => check.id === "tdx.fresh")?.lane, "collateral-freshness");
 });
 
 test("network selection follows the account suffix", () => {

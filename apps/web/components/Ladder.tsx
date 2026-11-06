@@ -20,6 +20,7 @@ export interface FindingProvenance {
 export interface Finding {
   id: string;
   ladder: "PROVEN" | "NOT_PROVEN" | "RISKY";
+  lane?: "collateral-freshness";
   title: string;
   plainEnglish: string;
   inference: boolean;
@@ -74,6 +75,10 @@ function provenanceTag(provenance: FindingProvenance): string {
   if (provenance.evidenceSource === "file") return "File · not live chain";
   if (provenance.observationKind === "computed") return "Computed · not live chain";
   return "Not live chain";
+}
+
+function isCollateralFreshness(finding: Finding): boolean {
+  return finding.lane === "collateral-freshness" || finding.id === "tdx.fresh";
 }
 
 function breakable(url: string) {
@@ -146,11 +151,28 @@ function RungGroup({ rung, findings }: { rung: Rung; findings: Finding[] }) {
   );
 }
 
+function LaneGroup({ findings }: { findings: Finding[] }) {
+  const status = findings[0]?.ladder ?? "NOT_PROVEN";
+  return (
+    <div className="rung-group" data-lane="collateral-freshness">
+      <div className="rung-title">
+        <span className={`glyph ${status}`} aria-hidden="true" />
+        <span className="label">Collateral freshness · {findings.length}</span>
+      </div>
+      {findings.map((finding) => (
+        <FindingRow key={finding.id} finding={finding} />
+      ))}
+    </div>
+  );
+}
+
 export function Ladder({ payload }: { payload: AuditPayload }) {
   const { report } = payload;
   const s = report.summary;
   const [filter, setFilter] = useState<"ALL" | Rung>("ALL");
   const count: Record<Rung, number> = { RISKY: s.risky, NOT_PROVEN: s.notProven, PROVEN: s.proven };
+  const collateralFindings = report.findings.filter(isCollateralFreshness);
+  const visibleCollateralFindings = collateralFindings.filter((finding) => filter === "ALL" || finding.ladder === filter);
 
   return (
     <article className="report frame" aria-labelledby="rep-target">
@@ -189,10 +211,11 @@ export function Ladder({ payload }: { payload: AuditPayload }) {
       <div className="report-body">
         <div className="findings">
           {ORDER.map((rung) => {
-            const group = report.findings.filter((finding) => finding.ladder === rung);
+            const group = report.findings.filter((finding) => finding.ladder === rung && !isCollateralFreshness(finding));
             if (group.length === 0 || (filter !== "ALL" && filter !== rung)) return null;
             return <RungGroup key={`${rung}-${filter}`} rung={rung} findings={group} />;
           })}
+          {visibleCollateralFindings.length > 0 ? <LaneGroup findings={visibleCollateralFindings} /> : null}
         </div>
         <aside className="aside" aria-label="Report details">
           {report.verifier ? (

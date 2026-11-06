@@ -1,5 +1,6 @@
 export type Network = "testnet" | "mainnet";
 export type Ladder = "PROVEN" | "NOT_PROVEN" | "RISKY";
+export type FindingLane = "collateral-freshness";
 
 export type ShadeKind =
   | "shade-v1"
@@ -40,6 +41,8 @@ export interface FindingProvenance {
 export interface Finding {
   id: string;
   ladder: Ladder;
+  /** External TCB collateral status, separate from registered agent/configuration changes. */
+  lane?: FindingLane;
   title: string;
   plainEnglish: string;
   /** True when the sentence goes beyond a direct equality or a signature check. */
@@ -104,6 +107,8 @@ export interface Freshness {
 
 /** Non-secret fields a diff can line up. Env values are never copied here. */
 export interface ReportFacts {
+  /** Hash of the exact registered compose when known; plaintext env values are never included. */
+  appComposeSha256: string | null;
   appCodehash: string | null;
   contractCodeHash: string | null;
   osImageHash: string | null;

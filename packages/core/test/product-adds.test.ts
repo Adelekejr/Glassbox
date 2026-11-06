@@ -14,7 +14,7 @@ import { SHADE_CONTRACT_TEMPLATES, codeHashOfWasm } from "../src/data/shade-temp
 import { diffReports, formatDiff } from "../src/diff.js";
 import { buildReport, formatReport } from "../src/report.js";
 import { ANCHOR_INSTRUCTIONS, planReportAnchor } from "../src/signed/anchor.js";
-import { THREAT_MODEL_DISCLOSURE } from "../src/types.js";
+import { THREAT_MODEL_DISCLOSURE, type Report } from "../src/types.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const votronPath = join(here, "fixtures/votron-registration.json");
@@ -202,6 +202,84 @@ test("diff of two registration files states what changed", async () => {
   const same = diffReports(left, left);
   assert.match(same.summary, /No compared field changed/);
 });
+
+test("diff attributes a fresh TCB status change to collateral only for the same registration", async () => {
+  const report = await auditFile(votronPath, { now: FROZEN });
+  const t1 = withFreshStatus(
+    report,
+    "PROVEN",
+    "Registered configuration's TCB is now UpToDate",
+    "2026-11-05T10:00:00.000Z",
+  );
+  const t2 = withFreshStatus(
+    report,
+    "RISKY",
+    "Registered configuration's TCB is now OutOfDate",
+    "2026-11-06T10:00:00.000Z",
+  );
+  const sameRegistration = diffReports(t1, t2);
+  const text = formatDiff(sameRegistration);
+  assert.equal(sameRegistration.registration.identity, "same");
+  assert.equal(sameRegistration.collateralFreshness.changed, true);
+  assert.equal(sameRegistration.collateralFreshness.attribution, "same-registration");
+  assert.match(text, /Checks: 2026-11-05T10:00:00\.000Z → 2026-11-06T10:00:00\.000Z/);
+  assert.match(text, /Collateral freshness \(TCB baseline\)/);
+  assert.match(text, /OutOfDate/);
+  assert.match(text, /registration transaction is unchanged/);
+
+  const changedRegistration = withFreshStatus(
+    report,
+    "RISKY",
+    "Registered configuration's TCB is now OutOfDate",
+    "2026-11-06T10:00:00.000Z",
+    "different-registration-tx",
+  );
+  const different = diffReports(t1, changedRegistration);
+  assert.equal(different.registration.identity, "different");
+  assert.equal(different.collateralFreshness.attribution, "different-registration");
+  assert.match(formatDiff(different), /registrations differ/);
+
+  const configMoved = {
+    ...changedRegistration,
+    facts: { ...changedRegistration.facts, appComposeSha256: "different-compose-hash" },
+  };
+  const configDiff = diffReports(t1, configMoved);
+  assert.ok(configDiff.compose.some((change) => change.startsWith("app_compose_sha256:")));
+});
+
+function withFreshStatus(
+  report: Report,
+  ladder: "PROVEN" | "NOT_PROVEN" | "RISKY",
+  title: string,
+  checkedAt: string,
+  txHash: string | null = report.inputs.txHash,
+): Report {
+  const findings = report.findings.map((finding) =>
+    finding.id === "tdx.fresh"
+      ? { ...finding, ladder, title, lane: "collateral-freshness" as const }
+      : finding,
+  );
+  const summary = {
+    proven: findings.filter((finding) => finding.ladder === "PROVEN").length,
+    notProven: findings.filter((finding) => finding.ladder === "NOT_PROVEN").length,
+    risky: findings.filter((finding) => finding.ladder === "RISKY").length,
+  };
+  const overall = summary.risky > 0 ? "RISKY" : summary.notProven > 0 ? "NOT_PROVEN" : "PROVEN";
+  return {
+    ...report,
+    generatedAt: checkedAt,
+    inputs: {
+      ...report.inputs,
+      txHash,
+      collateralFetchedAt: checkedAt,
+      freshCollateralSource: "https://pccs.phala.network",
+    },
+    findings,
+    summary,
+    overall,
+    overallPlainEnglish: `Highest rung on this ladder is ${overall.replace("_", " ")} (${summary.risky} risky, ${summary.notProven} not proven, ${summary.proven} proven). That is the strongest concern already listed. It is not a separate check.`,
+  };
+}
 
 test("a mismatched MRTD is not a clean table hit and is not a known fixed image", () => {
   const row = hardwareAndOSMeasurements["0.5.8"]["tdx.small"].rtmrs;
