@@ -10,7 +10,7 @@ function Intro() {
     <>
       <div className="eyebrow reveal">
         <span className="tick" aria-hidden="true" />
-        <span className="label">NEAR Hackathon · Security track</span>
+        <span className="label">NEAR AI-agent auditor</span>
       </div>
       <h1 id="hero-title" className="reveal">
         What was registered for this agent, <span className="dim">and what can change it.</span>

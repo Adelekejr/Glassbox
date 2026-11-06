@@ -98,9 +98,9 @@ Evidence at the time of this pass: `apps/web/next.config.ts` set transpile and w
 
 ### Info
 
-**10. Repository visibility.** This pass did not change it. Hackathon notes say a public repo is required to submit. Glassbox is public at https://github.com/Adelekejr/Glassbox. This record does not deploy, publish to npm, or submit.
+**10. Repository visibility.** This pass did not change it. Glassbox is public at https://github.com/Adelekejr/Glassbox. This record does not deploy, publish to npm, or submit.
 
-**11. Licences do not look like a submit blocker.** The project is MIT (`LICENSE`). `NOTICE` keeps the Apache-2.0 notices for `@phala/dcap-qvl`, the Shade measurement tables, and `shade-contract-template.wasm`. `pnpm licenses list` groups are MIT, Apache-2.0, ISC, BSD-2-Clause, BSD-3-Clause, 0BSD, BlueOak-1.0.0, CC-BY-4.0 (`caniuse-lite`), and one LGPL-3.0-or-later package: `@img/sharp-libvips-linux-x64` (transitive through Next). No GPL or AGPL package was listed. The app does not use `next/image`. LGPL here is a replaceable native library, not a reason to relicense Glassbox. If you ship `node_modules`, keep that LGPL notice with the binary.
+**11. Licences do not block this project.** The project is MIT (`LICENSE`). `NOTICE` keeps the Apache-2.0 notices for `@phala/dcap-qvl`, the Shade measurement tables, and `shade-contract-template.wasm`. `pnpm licenses list` groups are MIT, Apache-2.0, ISC, BSD-2-Clause, BSD-3-Clause, 0BSD, BlueOak-1.0.0, CC-BY-4.0 (`caniuse-lite`), and one LGPL-3.0-or-later package: `@img/sharp-libvips-linux-x64` (transitive through Next). No GPL or AGPL package was listed. The app does not use `next/image`. LGPL here is a replaceable native library, not a reason to relicense Glassbox. If you ship `node_modules`, keep that LGPL notice with the binary.
 
 **12. Shade interface and several **PROVEN** rows trust the contract's own views.** `classifyShade` (`packages/core/src/audit.ts`) keys off method names. `agent.validity` is **PROVEN** when the view says `Valid`. `measurements.approved` is **PROVEN** when `get_agents` matches `get_approved_measurements` on the same contract. A contract can implement those methods and agree with itself. The wording matches the ladder rule (a view returned the value named in the sentence). It is not an Intel attestation. `runtime.observed` stays **NOT PROVEN**.
 
