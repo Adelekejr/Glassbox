@@ -115,7 +115,10 @@ async function tryFastnear(
   const host = network === "testnet" ? "https://tx.test.fastnear.com" : "https://tx.main.fastnear.com";
   const url = `${host}/v0/account/${encodeURIComponent(accountId)}`;
   try {
-    const response = await fetchImpl(url, { headers: { accept: "application/json" } });
+    const response = await fetchImpl(url, {
+      headers: { accept: "application/json" },
+      redirect: "error",
+    });
     if (!response.ok) return null;
     const body = (await response.json()) as unknown;
     const calls = parseFastnear(body, method);
@@ -184,6 +187,7 @@ async function fetchNearblocks(
         accept: "application/json",
         "user-agent": "glassbox-auditor/0.1",
       },
+      redirect: "error",
     });
     if (response.status === 429) {
       throw new Error("NearBlocks rate limit (HTTP 429). Glassbox spaces calls; retry this account later.");
