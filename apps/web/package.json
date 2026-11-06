@@ -9,6 +9,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@phala/dcap-qvl": "0.7.1",
     "core": "workspace:*",
     "next": "^15.5.4",
     "react": "^19.1.1",
