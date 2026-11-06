@@ -50,6 +50,19 @@ export function presentCheck(report: Report): AgentCheck {
   return { overall: report.overall, summary: report.overallPlainEnglish, report };
 }
 
+export function summarizeFindings(findings: Finding[]): {
+  summary: Report["summary"];
+  overall: Ladder;
+} {
+  const summary = {
+    proven: findings.filter((finding) => finding.ladder === "PROVEN").length,
+    notProven: findings.filter((finding) => finding.ladder === "NOT_PROVEN").length,
+    risky: findings.filter((finding) => finding.ladder === "RISKY").length,
+  };
+  const overall: Ladder = summary.risky > 0 ? "RISKY" : summary.notProven > 0 ? "NOT_PROVEN" : "PROVEN";
+  return { summary, overall };
+}
+
 export function buildReport(bundle: EvidenceBundle, options?: { now?: Date; anchorIntent?: boolean }): Report {
   const now = options?.now ?? new Date(bundle.generatedAt);
   const findings = [
@@ -68,12 +81,7 @@ export function buildReport(bundle: EvidenceBundle, options?: { now?: Date; anch
 
   findings.sort((a, b) => LADDER_ORDER.indexOf(a.ladder) - LADDER_ORDER.indexOf(b.ladder) || a.id.localeCompare(b.id));
 
-  const summary = {
-    proven: findings.filter((finding) => finding.ladder === "PROVEN").length,
-    notProven: findings.filter((finding) => finding.ladder === "NOT_PROVEN").length,
-    risky: findings.filter((finding) => finding.ladder === "RISKY").length,
-  };
-  const overall: Ladder = summary.risky > 0 ? "RISKY" : summary.notProven > 0 ? "NOT_PROVEN" : "PROVEN";
+  const { summary, overall } = summarizeFindings(findings);
 
   const report: Report = {
     tool: "glassbox",
@@ -161,26 +169,16 @@ export function formatReport(report: Report): string {
   lines.push(report.freshness.live.detail);
   lines.push("");
   for (const ladder of LADDER_ORDER) {
-    const group = report.findings.filter((finding) => finding.ladder === ladder);
+    const group = report.findings.filter((finding) => finding.ladder === ladder && finding.lane !== "collateral-freshness");
     if (group.length === 0) continue;
     lines.push(ladder.replace("_", " "));
-    group.forEach((finding, index) => {
-      lines.push(`${index + 1}. ${finding.title}`);
-      lines.push(
-        `   Provenance: ${finding.provenance.evidenceSource} / ${finding.provenance.observationKind}. ${finding.provenance.label}`,
-      );
-      lines.push(`   ${finding.plainEnglish}`);
-      if (finding.inference) lines.push("   Marked as an inference.");
-      if (finding.evidence.length > 0) {
-        lines.push("   Evidence:");
-        for (const item of finding.evidence) {
-          const url = item.url ? ` (${item.url})` : "";
-          const detail = item.detail ? ` — ${item.detail}` : "";
-          lines.push(`   - ${item.label}${detail}${url}`);
-        }
-      }
-      lines.push("");
-    });
+    group.forEach((finding, index) => appendFinding(lines, finding, index));
+  }
+  const collateralFindings = report.findings.filter((finding) => finding.lane === "collateral-freshness");
+  if (collateralFindings.length > 0) {
+    lines.push("Collateral freshness (external TCB baseline)");
+    lines.push("This lane checks the registered quote against fresh PCCS collateral; a change here does not mean the agent registration/configuration changed.");
+    collateralFindings.forEach((finding, index) => appendFinding(lines, finding, index));
   }
   lines.push("Approval history");
   lines.push("On-demand approve and remove calls for this one contract. Not a continuous watcher.");
@@ -212,6 +210,24 @@ export function formatReport(report: Report): string {
   lines.push(report.anchor.reason);
   lines.push("");
   return lines.join("\n").trimEnd() + "\n";
+}
+
+function appendFinding(lines: string[], finding: Finding, index: number): void {
+  lines.push(`${index + 1}. ${finding.title}`);
+  lines.push(
+    `   Provenance: ${finding.provenance.evidenceSource} / ${finding.provenance.observationKind}. ${finding.provenance.label}`,
+  );
+  lines.push(`   ${finding.plainEnglish}`);
+  if (finding.inference) lines.push("   Marked as an inference.");
+  if (finding.evidence.length > 0) {
+    lines.push("   Evidence:");
+    for (const item of finding.evidence) {
+      const url = item.url ? ` (${item.url})` : "";
+      const detail = item.detail ? ` — ${item.detail}` : "";
+      lines.push(`   - ${item.label}${detail}${url}`);
+    }
+  }
+  lines.push("");
 }
 
 function attestationFindings(bundle: EvidenceBundle, now: Date): Finding[] {
@@ -1338,7 +1354,7 @@ function registrationTcbFinding(
   );
 }
 
-function freshTcbFinding(bundle: EvidenceBundle, fresh: ReturnType<typeof verifyQuoteAt> | null): Finding {
+export function freshTcbFinding(bundle: EvidenceBundle, fresh: ReturnType<typeof verifyQuoteAt> | null): Finding {
   const evidence: EvidenceLink[] = [{ label: "Phala PCCS", url: PINNED_PCCS_URL, detail: "allowlisted; caller URLs are not accepted" }];
   if (bundle.freshCollateral) {
     if (!fresh?.ok || !fresh.status) {
@@ -1349,6 +1365,7 @@ function freshTcbFinding(bundle: EvidenceBundle, fresh: ReturnType<typeof verify
         false,
         `A fresh collateral bundle was fetched from the allowlisted PCCS, and the quote did not verify against it. ${clip(fresh?.error ?? "")}`.trim(),
         evidence,
+        "collateral-freshness",
       );
     }
     const proven = fresh.status === "UpToDate";
@@ -1359,6 +1376,7 @@ function freshTcbFinding(bundle: EvidenceBundle, fresh: ReturnType<typeof verify
       false,
       `The registered configuration's TCB is now ${fresh.status}. This is the same registered quote checked against fresh collateral from the allowlisted PCCS. It is not a new quote from a live guest. TCB status is a verdict in this report. It is not informational.`,
       evidence,
+      "collateral-freshness",
     );
   }
   return make(
@@ -1370,6 +1388,7 @@ function freshTcbFinding(bundle: EvidenceBundle, fresh: ReturnType<typeof verify
       ? `Fresh collateral was not fetched (${bundle.freshCollateralError}), so the registered configuration's TCB status now was not checked.`
       : "Fresh collateral was not attached, so the registered configuration's TCB status now was not checked.",
     evidence,
+    "collateral-freshness",
   );
 }
 
@@ -1606,6 +1625,7 @@ function reportFacts(bundle: EvidenceBundle): ReportFacts {
   const selected = selectOsImageHash(tcb);
   const measurements = registeredMeasurements(tcb, firstMeasurement(bundle));
   return {
+    appComposeSha256: bundle.registration?.appComposeSha256 ?? null,
     appCodehash: bundle.agentView?.codehash ?? null,
     contractCodeHash: bundle.codeHash ?? null,
     osImageHash: selected.conflict ? null : selected.hash ?? null,
@@ -1677,10 +1697,12 @@ function make(
   inference: boolean,
   plainEnglish: string,
   evidence: EvidenceLink[] = [],
+  lane?: Finding["lane"],
 ): Finding {
   return {
     id,
     ladder,
+    ...(lane ? { lane } : {}),
     title,
     inference,
     plainEnglish,

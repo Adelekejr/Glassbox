@@ -47,7 +47,7 @@ export function usage(): string {
     "--anchor records that you asked to publish the report hash later. It does not send a transaction.",
     "verify checks the hash and signature, then re-reads the registration from archival RPC.",
     "check fails when the named rung is present. The default fixture path needs no chain.",
-    "diff compares two accounts or two JSON files: compose, measurements, codehash, and findings.",
+    "diff compares two accounts, JSON inputs, or saved --json audit reports; it shows registration identity and TCB collateral status at each check.",
     "index --live crawls the known accounts. Without --live it uses local fixtures.",
   ].join("\n");
 }
@@ -233,7 +233,10 @@ async function runCheck(argv: string[]): Promise<{ code: number; stdout: string;
       `Summary: ${report.summary.risky} risky, ${report.summary.notProven} not proven, ${report.summary.proven} proven.`,
     ];
     if (hit.length > 0) {
-      lines.push(`Failed because this registered configuration has ${hit.join(", ")}.`);
+      lines.push(`Failed because this report has ${hit.join(", ")} findings.`);
+      if (hit.includes("risky")) {
+        lines.push("A risky finding may be due to TCB/collateral freshness even when the agent registration/configuration did not change.");
+      }
       return { code: 1, stdout: `${lines.join("\n")}\n`, stderr: "" };
     }
     lines.push("No named rung was present.");
@@ -365,8 +368,55 @@ async function runDiff(argv: string[]): Promise<{ code: number; stdout: string; 
 
 async function loadTarget(target: string, network?: Network): Promise<Report> {
   if (target === "-") return auditStdin(network);
-  if (existsSync(target)) return auditFile(target, { network });
+  if (existsSync(target)) {
+    try {
+      const value = JSON.parse(readFileSync(target, "utf8")) as unknown;
+      if (isReportSnapshot(value)) return value;
+    } catch {
+      // Non-report JSON and text inputs continue through the existing offline audit path.
+    }
+    return auditFile(target, { network });
+  }
   return auditAccount(target, { network });
+}
+
+function isReportSnapshot(value: unknown): value is Report {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const report = value as Record<string, unknown>;
+  const inputs = report.inputs;
+  const facts = report.facts;
+  if (!inputs || typeof inputs !== "object" || Array.isArray(inputs)) return false;
+  if (!facts || typeof facts !== "object" || Array.isArray(facts)) return false;
+  const inputRecord = inputs as Record<string, unknown>;
+  const factRecord = facts as Record<string, unknown>;
+  const nullableString = (item: unknown) => item === null || typeof item === "string";
+  const nullableBoolean = (item: unknown) => item === null || typeof item === "boolean";
+  return (
+    report.tool === "glassbox" &&
+    typeof report.target === "string" &&
+    typeof report.generatedAt === "string" &&
+    typeof inputRecord.contract === "string" &&
+    nullableString(inputRecord.agent) &&
+    nullableString(inputRecord.txHash) &&
+    nullableString(inputRecord.collateralFetchedAt) &&
+    nullableBoolean(factRecord.publicLogs) &&
+    nullableBoolean(factRecord.publicSysinfo) &&
+    nullableString(factRecord.dstackVersion) &&
+    Array.isArray(factRecord.images) &&
+    Array.isArray(factRecord.secretEnvNames) &&
+    (factRecord.appComposeSha256 === undefined || nullableString(factRecord.appComposeSha256)) &&
+    ["appCodehash", "contractCodeHash", "osImageHash", "mrtd", "rtmr0", "rtmr1", "rtmr2"].every((key) => nullableString(factRecord[key])) &&
+    Array.isArray(report.findings) &&
+    report.findings.every((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) return false;
+      const finding = item as Record<string, unknown>;
+      return (
+        typeof finding.id === "string" &&
+        typeof finding.title === "string" &&
+        (finding.ladder === "PROVEN" || finding.ladder === "NOT_PROVEN" || finding.ladder === "RISKY")
+      );
+    })
+  );
 }
 
 function render(report: Report, json: boolean): string {

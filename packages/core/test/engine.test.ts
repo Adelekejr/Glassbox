@@ -13,13 +13,14 @@ import { hardwareAndOSMeasurements } from "../src/data/shade-measurements.js";
 import { matchShadeMeasurements } from "../src/data/shade-measurements.js";
 import { classifyImage, isSecretEnvName, parseCompose, sha256Hex } from "../src/evidence/compose.js";
 import { auditValue } from "../src/audit.js";
-import { buildReport, formatReport } from "../src/report.js";
+import { buildReport, formatReport, freshTcbFinding, summarizeFindings } from "../src/report.js";
 import { accountUrl, advisoryUrl, type EventLogEntry } from "../src/types.js";
 
 const fixturePath = join(dirname(fileURLToPath(import.meta.url)), "fixtures/votron-registration.json");
 const fixture = JSON.parse(readFileSync(fixturePath, "utf8")) as {
   originalAppComposeSha256: string;
   quoteHex: string;
+  collateral: unknown;
   tcbInfo: { app_compose: string; rtmr0: string; rtmr1: string; rtmr2: string; rtmr3: string; event_log: EventLogEntry[] };
   agentId: string;
 };
@@ -53,6 +54,8 @@ test("votron registration report uses the real quote and stays inside the wordin
   assert.match(byId["tdx.registration"].plainEnglish, /UpToDate/);
   assert.match(byId["tdx.registration"].plainEnglish, /registered configuration/i);
   assert.equal(byId["tdx.fresh"].ladder, "NOT_PROVEN");
+  assert.equal(byId["tdx.fresh"].lane, "collateral-freshness");
+  assert.match(text, /Collateral freshness \(external TCB baseline\)/);
   assert.equal(byId["tdx.debug"].ladder, "PROVEN");
   assert.ok(byId["tdx.advisories"]);
   assert.equal(report.verifier.package, "@phala/dcap-qvl");
@@ -117,6 +120,31 @@ test("fresh collateral errors are reported instead of being dropped", () => {
   );
   const fresh = report.findings.find((finding) => finding.id === "tdx.fresh");
   assert.match(fresh?.plainEnglish ?? "", /pccs down/);
+});
+
+test("an accepted OutOfDate TCB result stays RISKY in the collateral freshness lane", () => {
+  const finding = freshTcbFinding(
+    {
+      target: "ac-sandbox.votron.testnet",
+      network: "testnet",
+      shade: "shade-v1",
+      shadeDetail: "fixture",
+      methodsPresent: [],
+      registration: { quoteHex: fixture.quoteHex, collateral: fixture.collateral, agentId: fixture.agentId },
+      compose: null,
+      freshCollateral: fixture.collateral,
+      rpcEndpoints: [],
+      generatedAt: FROZEN.toISOString(),
+    },
+    { ok: true, status: "OutOfDate", advisoryIds: [], debug: null, reportData: null, measurements: null },
+  );
+  assert.equal(finding.id, "tdx.fresh");
+  assert.equal(finding.lane, "collateral-freshness");
+  assert.equal(finding.ladder, "RISKY");
+  assert.match(finding.title, /OutOfDate/);
+  const result = summarizeFindings([finding]);
+  assert.equal(result.summary.risky, 1);
+  assert.equal(result.overall, "RISKY");
 });
 
 test("event log replay matches the registered RTMR3", () => {

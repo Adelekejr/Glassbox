@@ -16,8 +16,12 @@ export interface IndexRow {
   bucket: string;
   configurationClass: string;
   summary: { proven: number; notProven: number; risky: number };
-  findings: { id: string; ladder: string; title: string }[];
+  findings: { id: string; ladder: string; title: string; lane?: "collateral-freshness" }[];
   evidence?: { label: string; detail?: string }[];
+}
+
+function isCollateralFreshness(finding: IndexRow["findings"][number]): boolean {
+  return finding.lane === "collateral-freshness" || finding.id === "tdx.fresh";
 }
 
 export function AccountsTable({ rows }: { rows: IndexRow[] }) {
@@ -43,6 +47,7 @@ export function AccountsTable({ rows }: { rows: IndexRow[] }) {
         {rows.map((r, i) => {
           const isOpen = !!open[r.accountId];
           const overall = r.overall as Rung;
+          const collateralFindings = r.findings.filter(isCollateralFreshness);
           return (
             <Fragment key={r.accountId}>
               <tr className="acct-row" aria-expanded={isOpen} onClick={() => flip(r.accountId)}>
@@ -69,7 +74,7 @@ export function AccountsTable({ rows }: { rows: IndexRow[] }) {
                   </p>
                   <div className="detail-grid">
                     {ORDER.map((k) => {
-                      const g = r.findings.filter((f) => f.ladder === k);
+                      const g = r.findings.filter((f) => f.ladder === k && !isCollateralFreshness(f));
                       return (
                         <div key={k}>
                           <h4 className="label"><span className={`glyph ${k}`} aria-hidden="true" />{LABEL[k]} · {g.length}</h4>
@@ -77,6 +82,12 @@ export function AccountsTable({ rows }: { rows: IndexRow[] }) {
                         </div>
                       );
                     })}
+                    {collateralFindings.length > 0 ? (
+                      <div>
+                        <h4 className="label"><span className={`glyph ${collateralFindings[0]?.ladder ?? "NOT_PROVEN"}`} aria-hidden="true" />Collateral freshness · {collateralFindings.length}</h4>
+                        <ul>{collateralFindings.map((f) => <li key={f.id}>{f.title}</li>)}</ul>
+                      </div>
+                    ) : null}
                   </div>
                   <div className="detail-ev">
                     {(r.evidence ?? []).map((e, j) => (

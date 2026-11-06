@@ -1,11 +1,12 @@
 import { canonicalJson, canonicalSha256 } from "./canonical.js";
 import { planReportAnchor, type AnchorOutcome } from "./anchor.js";
 import { loadOrCreateSigningKey, signUtf8, type SigningKey } from "./keys.js";
-import type { Ladder, ObservationKind, Report } from "../types.js";
+import type { FindingLane, Ladder, ObservationKind, Report } from "../types.js";
 
 export interface CanonicalCheck {
   id: string;
   ladder: Ladder;
+  lane?: FindingLane;
   title: string;
   inference: boolean;
   plainEnglish: string;
@@ -60,6 +61,7 @@ export function buildCanonicalBody(report: Report): CanonicalReportBody {
   const checks: CanonicalCheck[] = report.findings.map((finding) => ({
     id: finding.id,
     ladder: finding.ladder,
+    ...(finding.lane ? { lane: finding.lane } : {}),
     title: finding.title,
     inference: finding.inference,
     plainEnglish: finding.plainEnglish,
