@@ -20,6 +20,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@phala/dcap-qvl':
+        specifier: 0.7.1
+        version: 0.7.1
       core:
         specifier: workspace:*
         version: link:../../packages/core

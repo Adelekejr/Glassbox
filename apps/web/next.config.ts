@@ -3,6 +3,9 @@ import { securityHeaders } from "./lib/headers";
 
 const nextConfig: NextConfig = {
   transpilePackages: ["core"],
+  // Keep the verifier out of the server bundle. Next only does that when
+  // apps/web can resolve the same copy packages/core imports. A bundled copy
+  // throws "Failed to parse CRL" on Intel CRLs the real package accepts.
   serverExternalPackages: ["@phala/dcap-qvl"],
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
