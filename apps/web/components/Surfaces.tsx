@@ -30,7 +30,7 @@ const SURFACES: Surface[] = [
     id: "mcp", title: "Agent tool", tag: "check_agent", file: ".cursor/mcp.json",
     sub: "Stdio MCP server. One tool. Returns the same ladder as JSON.",
     lines: [{ kind: "raw", text: `{\n  "mcpServers": {\n    "glassbox": {\n      "command": "node",\n      "args": ["/ABSOLUTE/PATH/Glassbox/packages/mcp/bin/glassbox-mcp.js"]\n    }\n  }\n}` }],
-    note: <><code>check_agent</code> takes a NEAR account or pasted JSON. It returns the same ladder as JSON, a one-sentence summary, and <code>overall</code> (the highest rung). Stdio transport. Publishing <code>glassbox-mcp</code> to npm is not part of this submission.</>,
+    note: <><code>check_agent</code> takes a NEAR account or pasted JSON. It returns the same ladder as JSON, a one-sentence summary, and <code>overall</code> (the highest rung). Stdio transport. <code>glassbox-mcp</code> is not published to npm.</>,
   },
   {
     id: "web", title: "Web form", tag: "deployed", file: "Public site",

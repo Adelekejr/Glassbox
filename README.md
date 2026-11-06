@@ -1,6 +1,6 @@
 # Glassbox
 
-Free, open-source (MIT) public auditor for AI-agent contracts on NEAR. Entered in the NEAR Hackathon, Security track.
+Free, open-source (MIT) public auditor for AI-agent contracts on NEAR.
 
 Glassbox takes a NEAR account, or a pasted registration / app-compose / deployment JSON file, and prints one report. Every finding sits on a ladder: **PROVEN**, **NOT PROVEN**, or **RISKY**. Each line is plain English and, where a chain fact exists, links to it. The tool does not send transactions. It can sign a report file on your computer. That key stays on that computer.
 
@@ -115,7 +115,7 @@ The first `--sign` creates a key at `~/.config/glassbox/report-signing-key.pem` 
 
 Fresh collateral, access keys, and the MPC allowlists can change after the report is signed. Verify leaves those as they were signed and recomputes the registration checks.
 
-Anchoring the report hash on NEAR is a stub. `--sign` already hashes the canonical report body with sha256. `--anchor` and `GLASSBOX_ANCHOR=1` only record that you asked. The status stays `skipped`. This build does not build a Glassbox contract, does not build that call, does not load a NEAR signer, and does not spend gas. No account is required today. A live anchor is out of this submission.
+Anchoring the report hash on NEAR is a stub. `--sign` already hashes the canonical report body with sha256. `--anchor` and `GLASSBOX_ANCHOR=1` only record that you asked. The status stays `skipped`. This build does not build a Glassbox contract, does not build that call, does not load a NEAR signer, and does not spend gas. No account is required today. A live anchor is not part of this build.
 
 ## Diff
 
@@ -136,7 +136,7 @@ Do install it for an agent owner — see `packages/mcp/README.md` for Claude Des
 node packages/mcp/bin/glassbox-mcp.js
 ```
 
-Publishing `glassbox-mcp` to npm is not part of this submission. Do not publish it. The install snippets in `packages/mcp/README.md` point at `node` and this repo's bin. There is no `npx glassbox-mcp` path to follow here.
+`glassbox-mcp` is not published to npm. Do not publish it. The install snippets in `packages/mcp/README.md` point at `node` and this repo's bin. There is no `npx glassbox-mcp` path to follow here.
 
 `check_agent` accepts a NEAR account id or JSON text. It refuses a URL, and it refuses a caller-supplied collateral host. A burst of calls in one process is limited to about six a minute. A pasted JSON report says the file supplied the compared values. A verified quote in that file is a check of those bytes, not a fresh chain read.
 
@@ -245,8 +245,6 @@ The seven-account snapshot is the first table. The second table is smoke and MPC
 ## Gideon
 
 Gideon is the sibling project by the same builder (Adelekejr). It is a NEAR pre-send safety checker. The public repository is [https://github.com/Adelekejr/Gideon-near](https://github.com/Adelekejr/Gideon-near). Gideon names Glassbox as the registration auditor.
-
-Hackathon screening question Q-015 asks for that sibling to be named.
 
 Glassbox answers what was registered, whether the quote verifies, and who can change it. Gideon checks a payment before it is sent. They do not share a verdict. Glassbox does not add a payment or send screen. That work stays in Gideon.
 

@@ -1,11 +1,11 @@
 # Handoff — Glassbox day 2
 
-Written 2026-11-04 so another session can continue without re-deriving the rules. Counts and submit scope were checked on 2026-11-05 against `apps/web/data/proof-strip.json` and an offline audit of the votron capture. The live index was not crawled again.
+Written 2026-11-04 so another session can continue without re-deriving the rules. Counts and the documented scope were checked on 2026-11-05 against `apps/web/data/proof-strip.json` and an offline audit of the votron capture. The live index was not crawled again.
 
 ## Done
 
 - pnpm workspace. `packages/core` is the library. `packages/cli` is `glassbox <account|file>` (`pnpm --filter cli start …`, human text, or `--json`).
-- `packages/mcp` (`glassbox-mcp`) is a stdio MCP server. Tool `check_agent` returns `{ overall, summary, report }`. See `packages/mcp/README.md` for Claude Desktop and Cursor config. It is not published to npm. Do not publish it for this submission. Local install uses `node` and `packages/mcp/bin/glassbox-mcp.js`.
+- `packages/mcp` (`glassbox-mcp`) is a stdio MCP server. Tool `check_agent` returns `{ overall, summary, report }`. See `packages/mcp/README.md` for Claude Desktop and Cursor config. It is not published to npm. Do not publish it. Local install uses `node` and `packages/mcp/bin/glassbox-mcp.js`.
 - `apps/web` is a plain Next.js form. The public demo is https://glassbox-inky.vercel.app. `pnpm --filter web dev` runs the same form locally. POST `/api/audit` accepts a NEAR account id or JSON text and does not read local files (`auditTarget` does, so the route must not call it). Admission prefers the shared Redis or KV budget (10 per minute, 2 in flight) when `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are set. That shared budget is the production limiter. `GLASSBOX_AUDIT_TOKEN` is the fallback when no store is configured. `GLASSBOX_PUBLIC_DEMO=1` is process-local demo mode, not a shared limit. With none of those set, the route returns 403. Do not remove that gate. Do not drop the demo flag while the public site still depends on it. Restyle is a separate track. Next needs `extensionAlias` in `next.config.ts` so core's `.js` imports resolve to `.ts`.
 - Shade v2: `get_approved_measurements` rows may be nested `{ rtmrs, key_provider_event_digest, app_compose_hash_payload }`. `get_agents` fills `v2Agents`. A match is PROVEN. All-zero rows are the local-mode default and are RISKY (`measurements.local_default`), not a TDX measurement. `requires_tee: false` is stated in the interface sentence.
 - Local sandbox test: `packages/core/test/shade-v2.sandbox.test.ts` plus `fixtures/shade-contract-template.wasm` (Apache-2.0, framework commit 35758f3). Uses `near-sandbox` 0.3.x (neard 2.13) and `near-api-js`. The test passes `finality: "optimistic"` because a one-node sandbox has not finalized the latest block. Public audits stay on `final`. No testnet transaction.
@@ -74,7 +74,7 @@ FastNEAR tx history (`https://tx.test.fastnear.com/v0/account/<id>` and the main
 
 Work on `cursor/…` branches off `main`. Keep commits small. MCP `check_agent` and the web form exist. The public demo is already at https://glassbox-inky.vercel.app. Do not publish `glassbox-mcp`. Do not add a payment or send UI (that is Gideon). Do not build a Glassbox contract or a live `--anchor`. The anchor stub stays `skipped`.
 
-## Out of this submission
+## Out of scope
 
 - Do not build a Glassbox contract or turn `--anchor` into a transaction. The stub stays `skipped`.
 - Do not publish `glassbox-mcp` to npm.
@@ -86,7 +86,7 @@ Work on `cursor/…` branches off `main`. Keep commits small. MCP `check_agent` 
 
 1. A real Shade v2 TEE registration (not local-mode zeros, and not the ironshield row that loaded no quote) if the owner accepts a deploy. The sandbox path only proves the interface and the approved-list compare. `requires_tee: true` still needs a quote Glassbox can verify; v2 does not store the raw quote, so history or a paste is still required for TCB status.
 2. Optional measurement work: dstack-mr can hash older images (0.5.0–0.5.11, 0.6.0). Until those hashes are reproduced, leave them out of the fixed list. A reproduced vulnerable hash may be added as a known non-fixed image, with the source, and the sentence stays "not a known fixed image" or "matches a vulnerable configuration".
-3. Hackathon items that are not code. The repository is public at https://github.com/Adelekejr/Glassbox. The user posts on X with `@NEARProtocol` and `#NEARHackathon`, the user creates the mainnet payout account, and the submission POST waits for the user to confirm the payload. Deadline cited in the notes: 2026-11-14T23:59Z. Do not post, publish, or submit on the user's behalf. Restyle of `apps/web` is a separate track.
+3. Publishing and posting stay with the user. The repository is public at https://github.com/Adelekejr/Glassbox. Do not post, publish, or submit on the user's behalf. A visual restyle of `apps/web` is a separate track.
 
 ## Files worth opening first
 

@@ -8,8 +8,7 @@ export function SiteFooter() {
           <div>
             <Brand />
             <p style={{ marginTop: 20 }}>
-              Free, open-source (MIT) public auditor for AI-agent contracts on NEAR. Entered in the NEAR Hackathon,
-              Security track.
+              Free, open-source (MIT) public auditor for AI-agent contracts on NEAR.
             </p>
             <p style={{ marginTop: 12 }}>
               It does not judge whether a payment is correct. That is{" "}
