@@ -1,4 +1,5 @@
 # Glassbox
+AI agents on NEAR are hard to trust when it’s unclear what they were registered to run, what their evidence actually proves, and who can change it.
 
 Free, open-source (MIT) public auditor for AI-agent contracts on NEAR.
 
