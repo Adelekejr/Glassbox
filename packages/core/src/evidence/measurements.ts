@@ -1,6 +1,7 @@
 import type { ApprovalEvent, ApprovedMeasurementRow, ShadeKind, ShadeV2Agent } from "../types.js";
 import { isoFromUnixMs, nsToSeconds } from "../types.js";
 import type { HistoryCall } from "../near/history.js";
+import { isDigest, digestsEqual } from "./digest.js";
 
 export function approvalMethodsFor(shade: ShadeKind): string[] {
   switch (shade) {
@@ -58,14 +59,15 @@ export function isZeroMeasurement(row: ApprovedMeasurementRow): boolean {
   return [row.mrtd, row.rtmr0, row.rtmr1, row.rtmr2].every((value) => typeof value === "string" && /^0+$/.test(value.replace(/^0x/, "")));
 }
 
-export type MeasurementComparison = "match" | "mismatch" | "incomplete";
+export type MeasurementComparison = "match" | "mismatch" | "incomplete" | "not-digest";
 
 const STATIC_FIELDS = ["mrtd", "rtmr0", "rtmr1", "rtmr2"] as const;
 const CLAIMED_FIELDS = ["key_provider_event_digest", "app_compose_hash_payload"] as const;
 
 /**
- * A field counts as a match only when both sides carry it and the values agree.
+ * A field counts as a match only when both sides carry a real digest and the values agree.
  * A missing key-provider digest or app-compose hash is incomplete, not a match.
+ * A present value that is not a digest (for example "not-in-a-tee") is not a match.
  * When requireClaimedFields is false, those two are compared only if both sides have them
  * (the non-v2 sentence does not claim them).
  */
@@ -75,25 +77,53 @@ export function compareMeasurements(
   requireClaimedFields: boolean,
 ): MeasurementComparison {
   let incomplete = false;
+  let notDigest = false;
   const fields = requireClaimedFields ? [...STATIC_FIELDS, ...CLAIMED_FIELDS] : [...STATIC_FIELDS];
   for (const field of fields) {
     const result = compareField(approved[field], registered[field]);
     if (result === "mismatch") return "mismatch";
     if (result === "incomplete") incomplete = true;
+    if (result === "not-digest") notDigest = true;
   }
   if (!requireClaimedFields) {
     for (const field of CLAIMED_FIELDS) {
       const left = approved[field];
       const right = registered[field];
-      if (left && right && !same(left, right)) return "mismatch";
+      if (!left || !right) continue;
+      const result = compareField(left, right);
+      if (result === "mismatch") return "mismatch";
+      if (result === "not-digest") notDigest = true;
     }
   }
+  if (notDigest) return "not-digest";
   return incomplete ? "incomplete" : "match";
+}
+
+const NAMED_DIGEST_FIELDS: { field: keyof ApprovedMeasurementRow; what: string }[] = [
+  { field: "key_provider_event_digest", what: "key-provider digest" },
+  { field: "app_compose_hash_payload", what: "app-compose hash" },
+  { field: "mrtd", what: "measurement" },
+  { field: "rtmr0", what: "measurement" },
+  { field: "rtmr1", what: "measurement" },
+  { field: "rtmr2", what: "measurement" },
+  { field: "rtmr3", what: "measurement" },
+];
+
+/** First present value in these rows that is not a 64- or 96-character hex digest. */
+export function firstNonDigestField(rows: ApprovedMeasurementRow[]): { what: string; value: string } | null {
+  for (const row of rows) {
+    for (const { field, what } of NAMED_DIGEST_FIELDS) {
+      const value = row[field];
+      if (typeof value === "string" && value.trim() && !isDigest(value)) return { what, value };
+    }
+  }
+  return null;
 }
 
 function compareField(left?: string, right?: string): MeasurementComparison {
   if (!left || !right) return "incomplete";
-  return same(left, right) ? "match" : "mismatch";
+  if (!isDigest(left) || !isDigest(right)) return "not-digest";
+  return digestsEqual(left, right) ? "match" : "mismatch";
 }
 
 export function approvalEventsFromCalls(method: string, calls: HistoryCall[]): ApprovalEvent[] {
@@ -144,11 +174,6 @@ function asMillis(value: unknown): number | undefined {
 
 function asString(value: unknown): string | undefined {
   return typeof value === "string" && value ? value : undefined;
-}
-
-function same(left?: string, right?: string): boolean {
-  if (!left || !right) return false;
-  return left.toLowerCase().replace(/^0x/, "") === right.toLowerCase().replace(/^0x/, "");
 }
 
 function short(value?: string): string {

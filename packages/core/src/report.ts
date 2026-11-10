@@ -3,7 +3,8 @@ import { DCAP_QVL_VERSION, PINNED_PCCS_URL, verifierMetadata } from "./checks/pc
 import { assessApprover, assessContractCode, assessRemove } from "./checks/contract.js";
 import { unattemptedLiveObservation } from "./checks/liveness.js";
 import { assessProvenance } from "./checks/provenance.js";
-import { compareMeasurements, isZeroMeasurement, type MeasurementComparison } from "./evidence/measurements.js";
+import { digestsEqual, isDigest, isNotInATee, nonDigestSentence, normalizeDigest } from "./evidence/digest.js";
+import { compareMeasurements, firstNonDigestField, isZeroMeasurement, type MeasurementComparison } from "./evidence/measurements.js";
 import { eventPayload, hasEvent, selectOsImageHash } from "./evidence/registration.js";
 import { assessAccessKeys } from "./checks/access-keys.js";
 import { assessDstack } from "./checks/dstack.js";
@@ -403,6 +404,17 @@ function quoteMatchFinding(bundle: EvidenceBundle, fromQuote: Measurements | nul
     rtmr3: tcb.rtmr3,
   };
   const fields = ["mrtd", "rtmr0", "rtmr1", "rtmr2", "rtmr3"] as const;
+  const badMeasurement = presentNonDigest(fields.flatMap((field) => [fromQuote[field], registered[field]]));
+  if (badMeasurement) {
+    return make(
+      "measurements.quote_match",
+      "NOT_PROVEN",
+      "Quote measurements are not real hashes",
+      false,
+      nonDigestSentence(badMeasurement, "measurement", "the registered configuration"),
+      txEvidence(bundle),
+    );
+  }
   if (measurementsEqual(fromQuote, registered, [...fields])) {
     return make(
       "measurements.quote_match",
@@ -438,6 +450,17 @@ function replayFinding(bundle: EvidenceBundle): Finding {
   try {
     const replayed = replayAll(events);
     const fields = ["rtmr0", "rtmr1", "rtmr2", "rtmr3"] as const;
+    const badMeasurement = presentNonDigest(fields.map((field) => tcb[field]));
+    if (badMeasurement) {
+      return make(
+        "rtmr.replay",
+        "NOT_PROVEN",
+        "RTMR replay was not a real hash comparison",
+        false,
+        nonDigestSentence(badMeasurement, "measurement", "the registered configuration"),
+        txEvidence(bundle),
+      );
+    }
     if (measurementsEqual(replayed, tcb, [...fields])) {
       return make(
         "rtmr.replay",
@@ -474,9 +497,29 @@ function composeHashFinding(bundle: EvidenceBundle): Finding {
       "The event log has no compose-hash event, so the app compose was not tied to RTMR3 that way.",
     );
   }
+  if (!isDigest(payload)) {
+    return make(
+      "compose.hash",
+      "NOT_PROVEN",
+      "Compose hash is not a real hash",
+      false,
+      nonDigestSentence(payload, "compose hash", "the registered compose"),
+      txEvidence(bundle),
+    );
+  }
   const recorded = bundle.registration?.appComposeSha256;
+  if (recorded && !isDigest(recorded)) {
+    return make(
+      "compose.hash",
+      "NOT_PROVEN",
+      "Compose hash is not a real hash",
+      false,
+      nonDigestSentence(recorded, "compose hash", "the registered compose"),
+      txEvidence(bundle),
+    );
+  }
   const redacted = bundle.registration?.appComposeRedacted === true;
-  if (recorded && sameHex(recorded, payload)) {
+  if (recorded && digestsEqual(recorded, payload)) {
     const fileNote = fromFile(bundle) ? " This run did not re-read the registration from chain." : "";
     const sentence = redacted
       ? `The compose-hash event payload equals the sha256 recorded for the on-chain app_compose string (${payload}). Secret-looking values were removed from the local copy, so this match is against the chain string, not against that redacted copy.${fileNote}`
@@ -635,11 +678,17 @@ function bestMeasurementComparison(
   const results = rows.map((row) => compareMeasurements(row, candidate, requireClaimedFields));
   if (results.includes("match")) return "match";
   if (results.every((result) => result === "mismatch")) return "mismatch";
+  const others = results.filter((result) => result !== "not-digest");
+  if (results.includes("not-digest") && others.length > 0 && others.every((result) => result === "mismatch")) {
+    return "mismatch";
+  }
+  if (results.includes("not-digest")) return "not-digest";
   return "incomplete";
 }
 
 function codehashFinding(bundle: EvidenceBundle): Finding {
-  const codehash = bundle.agentView?.codehash?.toLowerCase();
+  const rawCodehash = bundle.agentView?.codehash;
+  const codehash = normalizeDigest(rawCodehash) ?? rawCodehash?.trim().toLowerCase();
   const approved = bundle.approvedCodehashes ?? [];
   const network = bundle.network === "offline" ? "testnet" : bundle.network;
   const file = fromFile(bundle);
@@ -678,17 +727,34 @@ function codehashFinding(bundle: EvidenceBundle): Finding {
     );
   }
   if (!codehash) {
+    const empty = typeof rawCodehash === "string";
     return make(
       "codehash.approved",
       "NOT_PROVEN",
-      "Agent codehash was not loaded",
+      empty ? "App codehash is not a real hash" : "Agent codehash was not loaded",
       false,
-      file
-        ? "The file did not include a codehash, so it was not compared with approve_codehash history. This run did not call get_agent."
-        : "get_agent did not return a codehash, so it was not compared with approve_codehash history.",
+      empty
+        ? withCodehashCache(
+            bundle,
+            `${nonDigestSentence("", "code hash")}${file ? " This run did not call get_agent." : ""}`,
+          )
+        : file
+          ? "The file did not include a codehash, so it was not compared with approve_codehash history. This run did not call get_agent."
+          : "get_agent did not return a codehash, so it was not compared with approve_codehash history.",
     );
   }
-  const hit = approved.find((row) => row.codehash.toLowerCase() === codehash);
+  if (!isDigest(codehash)) {
+    const what = isNotInATee(codehash) ? "approved code hash" : "code hash";
+    return make(
+      "codehash.approved",
+      "NOT_PROVEN",
+      "App codehash is not a real hash",
+      false,
+      withCodehashCache(bundle, `${nonDigestSentence(codehash, what)}${file ? " This run did not call get_agent." : ""}`),
+      [{ label: file ? "codehash in the file" : "get_agent codehash", detail: codehash }],
+    );
+  }
+  const hit = approved.find((row) => digestsEqual(row.codehash, codehash));
   if (hit) {
     const evidence: EvidenceLink[] = [
       { label: file ? "codehash in the file" : "get_agent codehash", detail: codehash },
@@ -754,6 +820,19 @@ function measurementListFinding(bundle: EvidenceBundle): Finding {
         "Registered measurements are not on the approved list",
         false,
         `The contract published ${rows.length} approved measurement row${rows.length === 1 ? "" : "s"}, and ${mismatches} registered measurement set${mismatches === 1 ? " is" : "s are"} not on it.`,
+        [{ label: "Approved rows", detail: String(rows.length) }],
+      );
+    }
+    if (compared.includes("not-digest")) {
+      const bad = firstNonDigestField([...registered, ...rows]);
+      return make(
+        "measurements.approved",
+        "NOT_PROVEN",
+        "Approved measurements are not real hashes",
+        false,
+        bad
+          ? nonDigestSentence(bad.value, bad.what, "the measurement")
+          : "A value in this comparison is not a real hash, so it proves nothing about the measurement.",
         [{ label: "Approved rows", detail: String(rows.length) }],
       );
     }
@@ -1807,9 +1886,11 @@ function fallbackCollateralTime(collateral: unknown): number {
   return Math.floor(Date.parse("2025-01-01T00:00:00Z") / 1000);
 }
 
-function sameHex(left?: string | null, right?: string | null): boolean {
-  if (!left || !right) return false;
-  return left.toLowerCase().replace(/^0x/, "") === right.toLowerCase().replace(/^0x/, "");
+function presentNonDigest(values: (string | null | undefined)[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim().length > 0 && !isDigest(value)) return value;
+  }
+  return undefined;
 }
 
 function truncate(value: string): string {

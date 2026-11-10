@@ -1,5 +1,6 @@
 import { lookupFixedImage } from "../data/fixed-images.js";
 import { matchShadeMeasurements } from "../data/shade-measurements.js";
+import { isDigest, nonDigestSentence } from "../evidence/digest.js";
 import type { Ladder } from "../types.js";
 
 export interface ProvenanceEvidence {
@@ -25,7 +26,9 @@ export function assessProvenance(input: {
   rtmr1?: string | null;
   rtmr2?: string | null;
 }): ProvenanceAssessment {
-  const fixed = input.osImageHashConflict ? null : lookupFixedImage(input.osImageHash);
+  const rawHash = input.osImageHash?.trim() ?? "";
+  const hash = isDigest(rawHash) ? rawHash : null;
+  const fixed = input.osImageHashConflict ? null : lookupFixedImage(hash);
   const table = matchShadeMeasurements(input);
   const cleanTable = table?.mrtdMatched ? table : null;
   const evidence: ProvenanceEvidence[] = [];
@@ -36,7 +39,12 @@ export function assessProvenance(input: {
       detail:
         "The os_image_hash field and the os-image-hash event payload differ. Neither value is treated as a known fixed image.",
     });
-  } else if (!input.osImageHash) {
+  } else if (!hash && rawHash) {
+    evidence.push({
+      label: "os_image_hash",
+      detail: nonDigestSentence(rawHash, "os image hash", "the guest image"),
+    });
+  } else if (!hash) {
     evidence.push({
       label: "os_image_hash",
       detail:
@@ -168,16 +176,25 @@ export function assessProvenance(input: {
     };
   }
   if (cleanTable) {
-    const hash = input.osImageHash ? " The registered os_image_hash is not a known fixed image." : "";
+    const hashNote = hash ? " The registered os_image_hash is not a known fixed image." : "";
     return {
       ladder: "RISKY",
       title: "Registered configuration matches a vulnerable configuration",
       inference: false,
-      detail: `RTMR1 and RTMR2 match Shade's published table for dstack ${cleanTable.version}, inside 0.3.1–0.6.0.${hash} The table is a comparison, not a measurement Glassbox computed.`,
+      detail: `RTMR1 and RTMR2 match Shade's published table for dstack ${cleanTable.version}, inside 0.3.1–0.6.0.${hashNote} The table is a comparison, not a measurement Glassbox computed.`,
       evidence,
     };
   }
-  if (input.osImageHash) {
+  if (rawHash && !hash) {
+    return {
+      ladder: "NOT_PROVEN",
+      title: "OS image hash is not a real hash",
+      inference: false,
+      detail: nonDigestSentence(rawHash, "os image hash", "the guest image"),
+      evidence,
+    };
+  }
+  if (hash) {
     return {
       ladder: "RISKY",
       title: "Registered os_image_hash is not a known fixed image",

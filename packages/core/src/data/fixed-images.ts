@@ -1,3 +1,5 @@
+import { normalizeDigest } from "../evidence/digest.js";
+
 /**
  * Guest OS image hashes Phala published for the releases that fix the
  * dstack guest-agent issue. Checked 2026-11-04.
@@ -39,7 +41,7 @@ export const FIXED_OS_IMAGE_HASHES: readonly FixedImage[] = [
 ];
 
 export function lookupFixedImage(hash: string | undefined | null): FixedImage | null {
-  if (!hash) return null;
-  const norm = hash.toLowerCase().replace(/^0x/, "");
+  const norm = normalizeDigest(hash);
+  if (!norm) return null;
   return FIXED_OS_IMAGE_HASHES.find((row) => row.hash === norm) ?? null;
 }
