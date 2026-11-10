@@ -353,7 +353,17 @@ export interface EvidenceBundle {
   methodProbes?: MethodProbe[];
   /** Set when a follow-up get_agent call failed after the method was known to exist. */
   agentViewError?: string;
+  /** Methods whose history read failed. An empty index is a different fact. */
+  historyFailedMethods?: string[];
   historyError?: string;
+  /** Age of the cached page that chose the registration transaction. */
+  registrationHistoryCacheAgeMs?: number;
+  /** Age of the cached page that supplied approve_codehash rows. */
+  codehashHistoryCacheAgeMs?: number;
+  /** The registration transaction was found, but its arguments could not be read. */
+  registrationArgsUnreadable?: boolean;
+  /** An approve_codehash row was kept, but its arguments could not be read. */
+  codehashArgsUnreadable?: boolean;
   rpcEndpoints: string[];
   generatedAt: string;
 }

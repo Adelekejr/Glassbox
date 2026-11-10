@@ -57,6 +57,8 @@ export function assessApprover(input: {
   accessKeyError?: string;
   approvalHistory?: ApprovalEvent[];
   historyLoaded: boolean;
+  /** Methods whose history read failed. Those are not an empty index. */
+  historyFailedMethods?: string[];
 }): ContractRow {
   const methods = relevantApproveMethods(input.shade);
   const evidence: ContractRow["evidence"] = [];
@@ -72,7 +74,13 @@ export function assessApprover(input: {
   }
   const methodList = methods.join(" and ");
   const signers = approveSigners(input.approvalHistory, methods);
-  if (input.historyLoaded) {
+  const failed = methods.filter((method) => input.historyFailedMethods?.includes(method));
+  if (failed.length > 0) {
+    evidence.push({
+      label: "approval history",
+      detail: `could not read history for ${failed.join(", ")}`,
+    });
+  } else if (input.historyLoaded) {
     evidence.push({
       label: "indexed approve signers",
       detail: signers.length > 0 ? signers.join(", ") : "none in the indexed history",
@@ -192,6 +200,7 @@ export function assessRemove(input: {
   changeMethods?: { name: string; exists: boolean }[];
   approvalHistory?: ApprovalEvent[];
   historyLoaded: boolean;
+  historyFailedMethods?: string[];
 }): ContractRow {
   const methods = relevantRemoveMethods(input.shade);
   if (methods.length === 0) {
@@ -202,7 +211,7 @@ export function assessRemove(input: {
       "This account is an MPC docker allowlist. remove_codehash and remove_measurements are not part of that interface, so whether they exist was not proven here.",
     );
   }
-  const parts = methods.map((method) => describeRemove(method, input));
+  const parts = methods.map((method) => describeRemove(method, { ...input, historyFailedMethods: input.historyFailedMethods }));
   const ladders = parts.map((part) => part.ladder);
   const ladder: Ladder = ladders.includes("RISKY")
     ? "RISKY"
@@ -276,12 +285,30 @@ function describeRemove(
     changeMethods?: { name: string; exists: boolean }[];
     approvalHistory?: ApprovalEvent[];
     historyLoaded: boolean;
+    historyFailedMethods?: string[];
   },
 ): { ladder: Ladder; title: string; text: string; evidence: ContractRow["evidence"] } {
   const probe = input.changeMethods?.find((item) => item.name === method);
   const calls = (input.approvalHistory ?? []).filter((event) => event.method === method && event.kind === "remove" && event.success);
   const evidence: ContractRow["evidence"] = [];
   if (probe) evidence.push({ label: method, detail: probe.exists ? "method name is present" : "MethodNotFound" });
+  if (input.historyFailedMethods?.includes(method)) {
+    evidence.push({ label: `${method} history`, detail: "could not read history" });
+    if (probe && !probe.exists) {
+      return {
+        ladder: "PROVEN",
+        title: `${method} is not on this account`,
+        text: `A view probe returned MethodNotFound for ${method}. History for ${method} could not be read, so this is not an empty index. MethodNotFound is the direct check.`,
+        evidence,
+      };
+    }
+    return {
+      ladder: "NOT_PROVEN",
+      title: `${method} history could not be read`,
+      text: `Could not read history for ${method}. A failed history read is not an empty index, and it is not proof the method was never called.`,
+      evidence,
+    };
+  }
   if (input.historyLoaded) evidence.push({ label: `${method} in indexed history`, detail: String(calls.length) });
   if (!probe && !input.historyLoaded) {
     return {

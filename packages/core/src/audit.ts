@@ -12,7 +12,7 @@ import {
 } from "./evidence/measurements.js";
 import { normalizeRegistrationArgs, normalizeTcb } from "./evidence/registration.js";
 import { AccountNotFoundError } from "./near/errors.js";
-import { extractFunctionCallArgs, listMethodCalls, type HistoryCall } from "./near/history.js";
+import { extractFunctionCallArgs, formatHistoryCacheAge, listMethodCalls, type HistoryCall } from "./near/history.js";
 import { NearClient, methodExists, type ViewResult } from "./near/rpc.js";
 import { buildReport } from "./report.js";
 import {
@@ -154,28 +154,47 @@ async function collectAccount(accountId: string, network: Network, options: Audi
   let requiresTee: boolean | null = null;
   const usedNearblocks = { value: false };
 
-  let historyError: string | undefined;
+  const historyFailures: { method: string; detail: string }[] = [];
+  let registrationCacheAgeMs: number | undefined;
+  let codehashCacheAgeMs: number | undefined;
+  let registrationArgsUnreadable = false;
+  let codehashArgsUnreadable = false;
+  let approveCodehashError: string | undefined;
+  let approveCodehashFromCache = false;
+  let approveCodehashCacheAgeMs: number | undefined;
+  const noteHistoryFailure = (method: string, error?: string): void => {
+    if (!error || historyFailures.some((failure) => failure.method === method)) return;
+    historyFailures.push({ method, detail: error });
+  };
   if (!options.skipHistory && (shade === "shade-v1" || shade === "shade-v1-worker" || shade === "shade-v2" || shade === "unknown")) {
     const method = shade === "shade-v1-worker" ? "register_worker" : "register_agent";
     const history = await safeHistory(network, accountId, method, options);
-    historySource = history.source;
-    usedNearblocks.value = history.usedNearblocks;
-    historyError = history.error;
+    if (!history.error && history.source !== "none") historySource = history.source;
+    if (history.usedNearblocks) usedNearblocks.value = true;
+    noteHistoryFailure(method, history.error);
+    if (history.fromCache && history.cacheAgeMs !== undefined) registrationCacheAgeMs = history.cacheAgeMs;
     registrationCount = history.calls.filter((call) => call.success).length;
     failedRegistrationCount = history.calls.filter((call) => !call.success).length;
     const chosen = history.calls.find((call) => call.success) ?? null;
     if (chosen) {
-      registration = await loadRegistration(archival, network, chosen);
+      const loaded = await loadRegistration(archival, network, chosen);
+      registration = loaded.evidence;
+      registrationArgsUnreadable = loaded.argsUnreadable;
     }
   }
 
   if (!options.skipHistory && (shade === "shade-v1" || shade === "shade-v1-worker")) {
     const history = await safeHistory(network, accountId, "approve_codehash", options);
     if (history.usedNearblocks) usedNearblocks.value = true;
-    if (historySource === "none") historySource = history.source;
-    historyError = history.error ?? historyError;
+    if (!history.error && history.source !== "none" && historySource === "none") historySource = history.source;
+    noteHistoryFailure("approve_codehash", history.error);
+    approveCodehashError = history.error;
+    approveCodehashFromCache = history.fromCache === true;
+    approveCodehashCacheAgeMs = history.cacheAgeMs;
+    if (history.fromCache && history.cacheAgeMs !== undefined) codehashCacheAgeMs = history.cacheAgeMs;
     approveCodehashCalls = history.calls;
     approvedCodehashes = codehashesFrom(history.calls);
+    codehashArgsUnreadable = history.calls.some((call) => call.success && call.argsUnreadable === true);
   }
 
   const infoView = probeMap.get("get_contract_info")?.view;
@@ -215,10 +234,23 @@ async function collectAccount(accountId: string, network: Network, options: Audi
 
   const approvalHistory = options.skipHistory
     ? { events: [] as ApprovalEvent[], note: "Approval history was not requested." }
-    : await collectApprovalHistory(shade, network, accountId, options, approveCodehashCalls, usedNearblocks, (message) => {
-        historyError = message ?? historyError;
-      });
+    : await collectApprovalHistory(
+        shade,
+        network,
+        accountId,
+        options,
+        {
+          calls: approveCodehashCalls,
+          error: approveCodehashError,
+          fromCache: approveCodehashFromCache,
+          cacheAgeMs: approveCodehashCacheAgeMs,
+        },
+        usedNearblocks,
+        noteHistoryFailure,
+      );
   if (!options.skipHistory && usedNearblocks.value) historySource = "nearblocks";
+  const historyError = formatHistoryFailures(historyFailures);
+  const historyFailedMethods = historyFailures.map((failure) => failure.method);
 
   const agentId = registration?.agentId;
   let agentViewError: string | undefined;
@@ -300,7 +332,12 @@ async function collectAccount(accountId: string, network: Network, options: Audi
     freshCollateralError,
     collateralFetchedAt,
     historySource,
+    historyFailedMethods: historyFailedMethods.length > 0 ? historyFailedMethods : undefined,
     historyError,
+    registrationHistoryCacheAgeMs: registrationCacheAgeMs,
+    codehashHistoryCacheAgeMs: codehashCacheAgeMs,
+    registrationArgsUnreadable: registrationArgsUnreadable || undefined,
+    codehashArgsUnreadable: codehashArgsUnreadable || undefined,
     inputOrigin: "chain",
     methodProbes,
     agentViewError,
@@ -313,14 +350,18 @@ async function loadRegistration(
   archival: NearClient,
   network: Network,
   call: HistoryCall,
-): Promise<RegistrationEvidence | null> {
+): Promise<{ evidence: RegistrationEvidence | null; argsUnreadable: boolean }> {
   let args = call.args;
   let timestampSec = nsToSeconds(call.timestampNs);
   let blockHeight: number | undefined;
+  let argsUnreadable = call.argsUnreadable === true && args === undefined;
   try {
     const tx = await archival.transaction(call.hash, call.signer);
     const extracted = extractFunctionCallArgs(tx);
-    if (extracted) args = extracted;
+    if (extracted) {
+      args = extracted;
+      argsUnreadable = false;
+    }
     const blockHash = (tx as { transaction_outcome?: { block_hash?: string } } | null)?.transaction_outcome?.block_hash;
     if (blockHash) {
       try {
@@ -332,28 +373,34 @@ async function loadRegistration(
       }
     }
   } catch {
-    // Indexer args, when complete, still let the quote check run.
+    if (args === undefined) argsUnreadable = true;
   }
   const normalized = normalizeRegistrationArgs(args);
   if (!normalized) {
     return {
+      evidence: {
+        agentId: call.signer,
+        txHash: call.hash,
+        timestampSec,
+        blockHeight,
+      },
+      argsUnreadable,
+    };
+  }
+  return {
+    evidence: {
+      quoteHex: normalized.quoteHex,
+      collateral: normalized.collateral,
+      checksum: normalized.checksum,
+      tcbInfo: normalized.tcbInfo,
+      appComposeSha256: normalized.appComposeSha256,
+      appComposeRedacted: false,
       agentId: call.signer,
       txHash: call.hash,
       timestampSec,
       blockHeight,
-    };
-  }
-  return {
-    quoteHex: normalized.quoteHex,
-    collateral: normalized.collateral,
-    checksum: normalized.checksum,
-    tcbInfo: normalized.tcbInfo,
-    appComposeSha256: normalized.appComposeSha256,
-    appComposeRedacted: false,
-    agentId: call.signer,
-    txHash: call.hash,
-    timestampSec,
-    blockHeight,
+    },
+    argsUnreadable: false,
   };
 }
 
@@ -362,23 +409,35 @@ async function collectApprovalHistory(
   network: Network,
   accountId: string,
   options: AuditOptions,
-  approveCodehashCalls: HistoryCall[],
+  approveCodehash: { calls: HistoryCall[]; error?: string; fromCache: boolean; cacheAgeMs?: number },
   usedNearblocks: { value: boolean },
-  onError: (message: string | undefined) => void,
+  onError: (method: string, error?: string) => void,
 ): Promise<{ events: ApprovalEvent[]; note?: string }> {
   const events: ApprovalEvent[] = [];
   const notes: string[] = [];
   for (const method of approvalMethodsFor(shade)) {
     const page =
       method === "approve_codehash"
-        ? { calls: approveCodehashCalls, usedNearblocks: false, error: undefined as string | undefined, fromCache: false }
+        ? {
+            calls: approveCodehash.calls,
+            usedNearblocks: false,
+            error: approveCodehash.error,
+            fromCache: approveCodehash.fromCache,
+            cacheAgeMs: approveCodehash.cacheAgeMs,
+            source: "none" as const,
+          }
         : await safeHistory(network, accountId, method, options);
     if (page.usedNearblocks) usedNearblocks.value = true;
-    if (page.error) onError(page.error);
-    if (page.fromCache) notes.push("Some rows were served from the local cache of an earlier NearBlocks read.");
+    if (page.error) {
+      onError(method, page.error);
+      notes.push(`Could not read ${method} history (${page.error}).`);
+    } else if (page.fromCache) {
+      const age = page.cacheAgeMs !== undefined ? ` (${formatHistoryCacheAge(page.cacheAgeMs)} old)` : "";
+      notes.push(`Some ${method} rows were served from a local cache of an earlier history read${age}.`);
+    }
     const rows = approvalEventsFromCalls(method, page.calls);
     events.push(...rows);
-    if (rows.length === 0) notes.push(`No ${method} calls were in the indexed history.`);
+    if (!page.error && rows.length === 0) notes.push(`No ${method} calls were in the indexed history.`);
   }
   events.sort((a, b) => (b.timestampNs ?? "").localeCompare(a.timestampNs ?? ""));
   return {
@@ -392,21 +451,35 @@ async function safeHistory(
   accountId: string,
   method: string,
   options: AuditOptions,
-): Promise<{ calls: HistoryCall[]; source: "fastnear" | "nearblocks"; usedNearblocks: boolean; error?: string; fromCache?: boolean }> {
+): Promise<{
+  calls: HistoryCall[];
+  source: "fastnear" | "nearblocks" | "none";
+  usedNearblocks: boolean;
+  error?: string;
+  fromCache?: boolean;
+  cacheAgeMs?: number;
+}> {
   try {
     return await listMethodCalls(network, accountId, method, {
       fetch: options.fetch,
       nearblocksIntervalMs: options.nearblocksIntervalMs,
+      rpcIntervalMs: options.rpcIntervalMs,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return {
       calls: [],
-      source: "nearblocks",
-      usedNearblocks: true,
+      source: "none",
+      usedNearblocks: false,
       error: message,
     };
   }
+}
+
+function formatHistoryFailures(failures: { method: string; detail: string }[]): string | undefined {
+  if (failures.length === 0) return undefined;
+  const parts = failures.map((failure) => `${failure.method} (${failure.detail})`);
+  return `Could not read history for ${parts.join("; ")}.`;
 }
 
 function codehashesFrom(calls: HistoryCall[]): ApprovedCodehash[] {

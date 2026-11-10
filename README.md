@@ -61,7 +61,7 @@ flowchart LR
 
 `ac-sandbox.votron.testnet` is the account suffix rule: `.testnet` selects testnet, `.near` selects mainnet. An account with neither suffix (such as `v1.signer`) is tried on mainnet, then testnet.
 
-The first live read spends about half a minute. History comes from NearBlocks, and Glassbox waits between those calls so it stays inside the free personal-use limit (about 6 per minute).
+The first live read spends about half a minute. History comes from the NearBlocks v3 API, and Glassbox waits between those calls so it stays inside the free personal-use limit (about 6 per minute). Call arguments are read from the archival NEAR RPC. A failed history read stays not proven. It is not described as an empty index.
 
 ## What the ladder means
 
