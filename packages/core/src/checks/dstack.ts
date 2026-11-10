@@ -1,5 +1,6 @@
 import { lookupFixedImage } from "../data/fixed-images.js";
 import { matchShadeMeasurements } from "../data/shade-measurements.js";
+import { isDigest, nonDigestSentence } from "../evidence/digest.js";
 import type { ComposeFacts, Measurements } from "../types.js";
 
 export type DstackKind =
@@ -62,7 +63,10 @@ export function assessDstack(input: {
   // A hash, when present, is the comparison. A declared dstack_version cannot prove a fixed image beside it.
   // A Shade table hit is not hidden by an os_image_hash, and the two are not merged into a fixed image when they disagree.
   // A present MRTD that misses the row is not a clean table hit and cannot be ignored in favor of a fixed hash.
-  const fixed = input.osImageHashConflict ? null : lookupFixedImage(input.osImageHash);
+  // A value that is not a 64-hex digest is not an os image hash.
+  const rawHash = input.osImageHash?.trim() ?? "";
+  const usableHash = isDigest(rawHash) ? rawHash : null;
+  const fixed = input.osImageHashConflict ? null : lookupFixedImage(usableHash);
   const table = matchShadeMeasurements(input.measurements ?? {});
   const cleanTable = table?.mrtdMatched ? table : null;
   if (input.osImageHashConflict) {
@@ -129,7 +133,7 @@ export function assessDstack(input: {
   }
   if (cleanTable) {
     const instance = cleanTable.instanceType ? `, instance ${cleanTable.instanceType}` : "";
-    const hashNote = input.osImageHash ? " The registered os_image_hash is not a known fixed image." : "";
+    const hashNote = usableHash ? " The registered os_image_hash is not a known fixed image." : "";
     return {
       kind: "vulnerable-table",
       inference: false,
@@ -137,11 +141,11 @@ export function assessDstack(input: {
       detail: `RTMR1 and RTMR2 match Shade's published Apache-2.0 measurement table for dstack ${cleanTable.version}${instance}. That release is inside 0.3.1–0.6.0. The table is a comparison, not a measurement Glassbox computed.${hashNote}${declaredNote}`,
     };
   }
-  if (input.osImageHash) {
+  if (usableHash) {
     return {
       kind: "not-fixed-image",
       inference: true,
-      label: input.osImageHash.slice(0, 16),
+      label: usableHash.slice(0, 16),
       detail: `The registered os_image_hash is not a known fixed image (dstack 0.5.12 or 0.6.1, including the published 0.5.12 dev and nvidia variants). MRTD and RTMR0–RTMR2 are not in the Shade 0.5.7 or 0.5.8 tables. Glassbox's fixed list can lag a newer release, so this is an inference that the image sits in dstack 0.3.1–0.6.0.${declaredNote}`,
     };
   }
@@ -172,6 +176,14 @@ export function assessDstack(input: {
       inference: true,
       label: "pre-0.5 pattern",
       detail: `Heuristic. The registered configuration references /var/run/tappd.sock and has no os-image-hash event.${rootfs} That pattern fits dstack before 0.5 (often described as 0.3.x or 0.4.x). It matches a vulnerable configuration in the 0.3.1–0.6.0 range. It does not identify an exact release.`,
+    };
+  }
+  if (rawHash && !usableHash) {
+    return {
+      kind: "unknown",
+      inference: false,
+      label: "os image hash is not a real hash",
+      detail: nonDigestSentence(rawHash, "os image hash", "the guest image"),
     };
   }
   return {
