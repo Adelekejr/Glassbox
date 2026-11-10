@@ -16,7 +16,7 @@ export interface CheckAgentInput {
 const MAX_TARGET_CHARS = 2_000_000;
 
 export const CHECK_AGENT_DESCRIPTION =
-  "Read-only audit of one NEAR account id or one pasted JSON registration. Returns overall, a one-sentence summary, and the report. No transaction is sent. Local files are not read. A collateral URL cannot be supplied.";
+  "Read-only audit of one NEAR account id or one pasted JSON registration. Returns overall, a one-sentence summary, a short plain summary, and the report. No transaction is sent. Local files are not read. A collateral URL cannot be supplied.";
 
 export const CHECK_AGENT_TARGET_DESCRIPTION =
   "NEAR account id, such as ac-sandbox.votron.testnet, or pasted JSON text. Local file paths are not accepted. A .testnet suffix selects testnet. A .near suffix selects mainnet.";

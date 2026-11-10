@@ -191,6 +191,18 @@ node packages/cli/bin/glassbox.js verify report.json
 
 The public demo is https://glassbox-inky.vercel.app. The same form runs locally with `pnpm --filter web dev`, then http://localhost:3000. Paste a live account (the hint names testnet or mainnet from the suffix) or JSON text. JSON pasted on the site is the text in the form. A CLI local file is read only when you pass a path to `glassbox`. The page POSTs to `/api/audit`, which calls the core library and does not read local files. The preferred production limiter is Upstash Redis: set both `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` (or the `KV_REST_API_URL` / `KV_REST_API_TOKEN` pair). When that store is present, admission uses the shared budget of 10 audits per minute and 2 at a time for the whole deployment, including when the demo flag is also set. When `GLASSBOX_AUDIT_TOKEN` is set and no shared store is configured, callers must send header `x-glassbox-audit-token`. `GLASSBOX_PUBLIC_DEMO=1` is process-local demo mode. It keeps anonymous access with a cap of 10 per minute in that one process. That cap resets on restart and is not shared across instances. The public demo uses this flag until those Redis variables are set. With none of those set, the route returns 403 and does not call RPC. The top of the page is the saved seven-account snapshot. Styling is plain on purpose.
 
+Every report also starts with one or two short sentences and a "What to do" line. Those sentences are chosen from the findings already on the report. They do not call a check proven unless every finding is PROVEN. The command line prints them first. `check_agent` returns them as `plainSummary`. The web form shows them above the rung counts.
+
+## Daily health
+
+A GitHub Action checks the live site once a day, and it can be started by hand. It asks https://glassbox-inky.vercel.app/api/audit for `ac-sandbox.votron.testnet` and `ironshield.near`, with a pause between them so it stays inside the rate limit. It also calls the same NearBlocks v3 receipts address the auditor uses (`/v3/accounts/{account}/receipts` on `api.nearblocks.io` and `api-testnet.nearblocks.io`). The job fails when a check fails.
+
+The result is written to a public file, `health.json`, on the `status` branch. The site reads that file. It does not call the Actions API, and it does not put a token in the browser. The Actions API's public limit is easy for a hosted site to use up, and a run's step list is a poor place to keep each check's own result. The job writes the file before it exits, including when a check failed, so the site can show the failure instead of an older pass.
+
+The footer on every page shows a dot and "All checks passing", "Check failing", or "Status unknown", with the last-checked time. It links to `/status`. If the file cannot be read, the page says "Status unknown". That is not a pass. The file is cached for about 10 minutes.
+
+The schedule and the manual run are available once this workflow is on `main`.
+
 ## Shade v2
 
 Do run the local sandbox test — see `packages/core/test/shade-v2.sandbox.test.ts`. It starts a local NEAR sandbox, deploys `shade-contract-template` from NearDeFi/shade-agent-framework commit `35758f3` (Apache-2.0 wasm in `packages/core/test/fixtures/`), approves the local-mode measurements, registers an agent, and audits that RPC. No testnet transaction. The registered measurements match `get_approved_measurements`. They are the all-zero local-mode default, which the report marks as not a TDX measurement.

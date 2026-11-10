@@ -29,7 +29,10 @@ test("parseArgs accepts an account, --json, and --network", () => {
 test("a capture file prints a report without calling the network", async () => {
   const human = await run([fixture]);
   assert.equal(human.code, 0);
+  assert.match(human.stdout, /^The owner of this agent can still change its code/);
+  assert.match(human.stdout, /What to do:/);
   assert.match(human.stdout, /Glassbox report/);
+  assert.ok(human.stdout.indexOf("What to do:") < human.stdout.indexOf("Glassbox report"));
   assert.match(human.stdout, /ac-sandbox\.votron\.testnet/);
   assert.match(human.stdout, /RISKY/);
   assert.match(human.stdout, /PROVEN/);
@@ -38,9 +41,15 @@ test("a capture file prints a report without calling the network", async () => {
   assert.doesNotMatch(human.stdout, /currently running/i);
   const json = await run([fixture, "--json"]);
   assert.equal(json.code, 0);
-  const report = JSON.parse(json.stdout) as { tool: string; summary: { risky: number } };
+  const report = JSON.parse(json.stdout) as {
+    tool: string;
+    summary: { risky: number };
+    plainSummary: { text: string; whatToDo: string };
+  };
   assert.equal(report.tool, "glassbox");
   assert.ok(report.summary.risky >= 1);
+  assert.match(report.plainSummary.text, /change its code/);
+  assert.match(report.plainSummary.whatToDo, /locked down/);
   assert.equal((report as { inputs?: { contract?: string } }).inputs?.contract, "ac-sandbox.votron.testnet");
 });
 

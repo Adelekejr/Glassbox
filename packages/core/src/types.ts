@@ -133,6 +133,12 @@ export interface MethodProbe {
   detail?: string;
 }
 
+/** Two short sentences at most, plus one action line. Both come from the findings already on the report. */
+export interface PlainSummary {
+  text: string;
+  whatToDo: string;
+}
+
 export interface Report {
   tool: "glassbox";
   version: string;
@@ -154,6 +160,8 @@ export interface Report {
   /** Highest rung present. Counts stay on `summary`; this is not a separate check. */
   overall: Ladder;
   overallPlainEnglish: string;
+  /** Plain sentences for a reader who does not need the ladder terms. */
+  plainSummary: PlainSummary;
   findings: Finding[];
   /**
    * Live view probes, when this run called them.

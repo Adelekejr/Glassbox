@@ -3,8 +3,9 @@
 Stdio MCP server. One tool, `check_agent`. It wraps the core auditor and returns JSON:
 
 - `overall` — the highest rung already on the ladder (`RISKY`, then `NOT_PROVEN`, then `PROVEN`)
-- `summary` — one plain-English sentence
-- `report` — the same ladder the CLI prints
+- `summary` — one sentence naming that rung and the counts
+- `plainSummary` — one or two short sentences, plus a "What to do" line, taken from the findings
+- `report` — the same ladder the CLI prints, including `plainSummary`
 
 It does not send transactions, and it does not judge payments. Payments are Gideon: https://github.com/Adelekejr/Gideon-near. It does not take a collateral URL. A NEAR account id is checked before any chain read. About six calls a minute are accepted in one process.
 

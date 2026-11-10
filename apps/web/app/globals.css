@@ -314,6 +314,10 @@ h1, h2, h3 { margin: 0; font-family: var(--font-display); font-weight: 700; colo
 .meta { margin-top: var(--s-3); display: flex; flex-wrap: wrap; gap: 6px 16px; }
 .meta span { font-size: var(--fs-sm); color: var(--text-2); }
 .meta b { font-weight: 500; color: var(--text-3); margin-right: 6px; font-family: var(--font-mono); font-stretch: 87.5%; font-size: var(--fs-label); letter-spacing: var(--track-label); text-transform: uppercase; }
+.plain-summary { grid-column: 1 / -1; max-width: 68ch; }
+.plain-summary p { font-size: var(--fs-body); line-height: 1.55; color: var(--text); }
+.plain-summary .plain-summary-action { margin-top: var(--s-2); font-size: var(--fs-sm); color: var(--text-2); }
+.plain-summary-action .label { margin-right: 8px; }
 .report-summary { grid-column: 1 / -1; font-size: var(--fs-ui); color: var(--text-2); max-width: 72ch; }
 
 .ladder-bar { padding: 0 var(--s-6) var(--s-5); }
@@ -439,8 +443,22 @@ h1, h2, h3 { margin: 0; font-family: var(--font-display); font-weight: 700; colo
 .footer-cols ul { list-style: none; margin: var(--s-3) 0 0; padding: 0; display: grid; gap: 10px; }
 .footer-cols a { color: var(--text-2); text-decoration: none; font-size: var(--fs-sm); }
 .footer-cols a:hover { color: var(--text); text-decoration: underline; }
-.footer-base { margin-top: var(--s-8); padding-top: var(--s-5); border-top: 1px solid var(--line); display: flex; justify-content: space-between; gap: var(--s-4); flex-wrap: wrap; }
+.footer-base { margin-top: var(--s-8); padding-top: var(--s-5); border-top: 1px solid var(--line); display: flex; justify-content: space-between; gap: var(--s-4); flex-wrap: wrap; align-items: center; }
 .footer-base span { font-size: 0.8125rem; color: var(--text-3); }
+.health-status { display: inline-flex; align-items: center; gap: 8px; color: var(--text-2); text-decoration: none; font-size: 0.8125rem; }
+.health-status:hover { color: var(--text); text-decoration: none; }
+.health-dot { width: 8px; height: 8px; border-radius: var(--r-pill); background: var(--text-3); flex: none; }
+.health-status[data-state="passing"] .health-dot,
+.status-row[data-state="passing"] .health-dot { background: var(--proven); }
+.health-status[data-state="failing"] .health-dot,
+.status-row[data-state="failing"] .health-dot { background: var(--risky); }
+.health-time { color: var(--text-3); }
+.status-list { list-style: none; margin: var(--s-6) 0 0; padding: 0; border-top: 1px solid var(--line-strong); }
+.status-row { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 12px; align-items: start; padding: var(--s-5) 0; border-bottom: 1px solid var(--line); }
+.status-row .health-dot { margin-top: 0.45em; }
+.status-row h3 { font-family: var(--font-ui); font-weight: 600; font-size: var(--fs-ui); letter-spacing: -0.005em; }
+.status-row p { margin-top: 4px; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.55; max-width: 68ch; }
+.status-links { margin-top: var(--s-6); display: flex; flex-wrap: wrap; gap: var(--s-4); }
 
 /* ---------- 16. Accounts page ---------- */
 .page-head { padding: clamp(40px, 6vw, 88px) 0 clamp(32px, 4vw, 56px); }
