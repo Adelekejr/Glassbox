@@ -1,8 +1,15 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { AccountNotFoundError } from "../src/near/errors.js";
 import { listMethodCalls, resetNearblocksLimiter } from "../src/near/history.js";
-import { NearClient } from "../src/near/rpc.js";
+import { methodExists, NearClient } from "../src/near/rpc.js";
+
+const codeDoesNotExist = JSON.parse(
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), "fixtures/code-does-not-exist.json"), "utf8"),
+) as { callFunctionError: string };
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -192,4 +199,30 @@ test("method-not-found is distinct from a panic, which means the method exists",
   const view = await okClient.viewFunction("ac-sandbox.votron.testnet", "get_agent", {});
   assert.equal(view.ok, true);
   assert.deepEqual(view.value, { checksum: "aa", codehash: "bb" });
+});
+
+test("CodeDoesNotExist is not an execution error, and a panic that mentions it still is", async () => {
+  const client = new NearClient({
+    network: "mainnet",
+    endpoints: ["https://rpc.example"],
+    minIntervalMs: 0,
+    sleep: async () => undefined,
+    fetch: async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as { params: { method_name: string } };
+      const error =
+        body.params.method_name === "get_agent"
+          ? 'wasm execution failed with error: HostError(GuestPanic { panic_msg: "CodeDoesNotExist" })'
+          : codeDoesNotExist.callFunctionError;
+      return jsonResponse({ result: { result: [], error, logs: [] } });
+    },
+  });
+  const missing = await client.viewFunction("ironshield.near", "get_contract_info", {});
+  assert.equal(missing.ok, false);
+  assert.equal(missing.reason, "code_does_not_exist");
+  assert.equal(methodExists(missing), false);
+  assert.match(missing.message ?? "", /CompilationError\(CodeDoesNotExist/);
+  const panicked = await client.viewFunction("ironshield.near", "get_agent", {});
+  assert.equal(panicked.ok, false);
+  assert.equal(panicked.reason, "execution_error");
+  assert.equal(methodExists(panicked), true);
 });

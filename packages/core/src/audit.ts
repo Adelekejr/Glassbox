@@ -11,6 +11,7 @@ import {
   normalizeV2Agent,
 } from "./evidence/measurements.js";
 import { normalizeRegistrationArgs, normalizeTcb } from "./evidence/registration.js";
+import { EMPTY_CONTRACT_CODE_HASH } from "./data/shade-templates.js";
 import { AccountNotFoundError } from "./near/errors.js";
 import { extractFunctionCallArgs, formatHistoryCacheAge, listMethodCalls, type HistoryCall } from "./near/history.js";
 import { NearClient, methodExists, type ViewResult } from "./near/rpc.js";
@@ -67,6 +68,11 @@ const PROBE_METHODS = [
   "get_worker",
   "allowed_docker_image_hashes",
 ] as const;
+
+/** Probe detail for a host that compiled nothing. This is not MethodNotFound. */
+const NO_CODE_DETAIL = "CodeDoesNotExist";
+
+const NO_CONTRACT_CODE_SENTENCE = "No contract code is deployed on this account.";
 
 export async function auditAccount(accountId: string, options: AuditOptions = {}): Promise<Report> {
   const explicit = options.network ?? detectNetwork(accountId);
@@ -135,11 +141,23 @@ async function collectAccount(accountId: string, network: Network, options: Audi
     finality: options.finality,
   });
   const account = await client.viewAccount(accountId);
-  const probed = await Promise.all(PROBE_METHODS.map((method) => probeMethod(client, accountId, method)));
+  const noDeployedCode = accountHasNoDeployedCode(account);
+  const probed = await Promise.all(
+    PROBE_METHODS.map((method) => probeMethod(client, accountId, method, noDeployedCode)),
+  );
+  const noContractCode = noDeployedCode || interfaceShowsNoCode(probed);
+  if (noContractCode) {
+    for (const hit of probed) {
+      if (hit.outcome === "present") {
+        hit.outcome = "absent";
+        hit.detail = NO_CODE_DETAIL;
+      }
+    }
+  }
   const probeMap = new Map(probed.map((probe) => [probe.name, probe]));
   const methodProbes: MethodProbe[] = probed.map(({ name, outcome, detail }) => ({ name, outcome, detail }));
   const present = methodProbes.filter((probe) => probe.outcome === "present").map((probe) => probe.name);
-  const shade = classifyShade(methodProbes);
+  const shade = noContractCode ? "unknown" : classifyShade(methodProbes);
   const generatedAt = (options.now ?? new Date()).toISOString();
 
   let registration: RegistrationEvidence | null = null;
@@ -197,7 +215,7 @@ async function collectAccount(accountId: string, network: Network, options: Audi
     codehashArgsUnreadable = history.calls.some((call) => call.success && call.argsUnreadable === true);
   }
 
-  const infoView = probeMap.get("get_contract_info")?.view;
+  const infoView = presentView(probeMap.get("get_contract_info"));
   let ownerId: string | undefined;
   let sawContractInfo = false;
   if (infoView?.ok && infoView.value && typeof infoView.value === "object") {
@@ -211,21 +229,27 @@ async function collectAccount(accountId: string, network: Network, options: Audi
   for (const name of CHANGE_METHOD_NAMES) {
     try {
       const view = await client.viewFunction(accountId, name, {});
-      const exists = methodExists(view);
+      const settled = viewProbeOutcome(view, noContractCode);
+      if (settled.detail === NO_CODE_DETAIL) {
+        // No code is not MethodNotFound. Do not record exists:false, which would prove the name absent.
+        methodProbes.push({ name, outcome: "absent", detail: NO_CODE_DETAIL });
+        continue;
+      }
+      const exists = settled.outcome === "present";
       changeMethods.push({ name, exists });
-      methodProbes.push({ name, outcome: exists ? "present" : "absent", detail: exists ? undefined : "MethodNotFound" });
+      methodProbes.push({ name, outcome: settled.outcome, detail: exists ? undefined : settled.detail });
     } catch (error) {
       // An RPC failure is not MethodNotFound. Leave the method unprobed.
       methodProbes.push({ name, outcome: "unavailable", detail: transportDetail(error) });
     }
   }
-  const measurementView = probeMap.get("get_approved_measurements")?.view;
+  const measurementView = presentView(probeMap.get("get_approved_measurements"));
   if (measurementView?.ok && Array.isArray(measurementView.value)) {
     approvedMeasurements = measurementView.value
       .map((row) => normalizeMeasurementRow(row))
       .filter((row): row is ApprovedMeasurementRow => row !== null);
   }
-  const agentsView = probeMap.get("get_agents")?.view;
+  const agentsView = presentView(probeMap.get("get_agents"));
   if (agentsView?.ok && Array.isArray(agentsView.value)) {
     v2Agents = agentsView.value
       .map((row) => normalizeV2Agent(row))
@@ -298,6 +322,7 @@ async function collectAccount(accountId: string, network: Network, options: Audi
   } else if (shade === "shade-v2" && sawContractInfo && requiresTee === null) {
     shadeDetail += " get_contract_info did not include requires_tee, so Shade local mode was not proven.";
   }
+  if (noContractCode) shadeDetail = NO_CONTRACT_CODE_SENTENCE;
 
   const live = options.liveEndpoint
     ? await probeLiveGuest(options.liveEndpoint, options.fetch)
@@ -551,16 +576,19 @@ function readBlockHeight(value: unknown): number | undefined {
 }
 
 function classifyShade(probes: MethodProbe[]): ShadeKind {
-  const outcome = (name: string) => probes.find((probe) => probe.name === name)?.outcome;
-  const present = (name: string) => outcome(name) === "present";
-  const absent = (name: string) => outcome(name) === "absent";
+  const probe = (name: string) => probes.find((item) => item.name === name);
+  const present = (name: string) => probe(name)?.outcome === "present";
+  // Absence is MethodNotFound only. CodeDoesNotExist is not a missing name, and a failed probe must not select an interface that depends on that method being missing.
+  const absent = (name: string) => {
+    const item = probe(name);
+    return item?.outcome === "absent" && item.detail !== NO_CODE_DETAIL;
+  };
   // get_contract_info by itself is not Shade v2. The v2 views have to answer.
   const shadeV2View =
     present("get_approved_measurements") || present("get_agents") || present("get_approved_ppids");
   if ((present("get_contract_info") && shadeV2View) || (present("get_approved_measurements") && present("get_agents"))) {
     return "shade-v2";
   }
-  // Absence is MethodNotFound only. A failed probe must not select an interface that depends on that method being missing.
   if (present("get_agent") && absent("get_contract_info")) return "shade-v1";
   if (present("get_worker") && absent("get_agent") && absent("get_contract_info")) return "shade-v1-worker";
   if (present("get_approved_measurements") && absent("get_contract_info")) return "measurements-registry";
@@ -580,7 +608,9 @@ function classifyShade(probes: MethodProbe[]): ShadeKind {
 function describeShade(kind: ShadeKind, probes: MethodProbe[], globalHash?: string | null): string {
   const views = probes.filter((probe) => (PROBE_METHODS as readonly string[]).includes(probe.name));
   const present = views.filter((probe) => probe.outcome === "present").map((probe) => probe.name);
-  const absent = views.filter((probe) => probe.outcome === "absent").map((probe) => probe.name);
+  const absent = views
+    .filter((probe) => probe.outcome === "absent" && probe.detail !== NO_CODE_DETAIL)
+    .map((probe) => probe.name);
   const unavailable = views.filter((probe) => probe.outcome === "unavailable").map((probe) => probe.name);
   const methods = present.length ? present.join(", ") : "no known view methods";
   const global = globalHash ? ` It uses global contract ${globalHash}.` : "";
@@ -613,14 +643,57 @@ interface ProbeHit {
   view?: ViewResult;
 }
 
-async function probeMethod(client: NearClient, accountId: string, method: string): Promise<ProbeHit> {
+async function probeMethod(
+  client: NearClient,
+  accountId: string,
+  method: string,
+  noDeployedCode: boolean,
+): Promise<ProbeHit> {
   try {
     const view = await client.viewFunction(accountId, method, {});
-    if (methodExists(view)) return { name: method, outcome: "present", view };
-    return { name: method, outcome: "absent", detail: "MethodNotFound", view };
+    const settled = viewProbeOutcome(view, noDeployedCode);
+    return { name: method, outcome: settled.outcome, detail: settled.detail, view };
   } catch (error) {
     return { name: method, outcome: "unavailable", detail: transportDetail(error) };
   }
+}
+
+function viewProbeOutcome(
+  view: ViewResult,
+  noDeployedCode: boolean,
+): { outcome: "present" | "absent"; detail?: string } {
+  if (noDeployedCode || view.reason === "code_does_not_exist") {
+    return { outcome: "absent", detail: NO_CODE_DETAIL };
+  }
+  if (methodExists(view)) return { outcome: "present" };
+  return { outcome: "absent", detail: "MethodNotFound" };
+}
+
+function presentView(hit: ProbeHit | undefined): ViewResult | undefined {
+  if (hit?.outcome !== "present") return undefined;
+  return hit.view;
+}
+
+/**
+ * The all-ones code hash is base58 of 32 zero bytes: no local wasm.
+ * A global contract can still run when that hash is empty, so it stays deployed code.
+ */
+function accountHasNoDeployedCode(account: {
+  code_hash?: string;
+  global_contract_hash?: string | null;
+}): boolean {
+  const globalHash = account.global_contract_hash;
+  if (typeof globalHash === "string" && globalHash.trim().length > 0) return false;
+  if (typeof account.code_hash !== "string") return false;
+  const codeHash = account.code_hash.trim();
+  return codeHash.length === 0 || codeHash === EMPTY_CONTRACT_CODE_HASH;
+}
+
+function interfaceShowsNoCode(probes: ProbeHit[]): boolean {
+  const iface = probes.filter((probe) => (PROBE_METHODS as readonly string[]).includes(probe.name));
+  if (iface.length === 0) return false;
+  if (iface.some((probe) => probe.outcome === "present" || probe.outcome === "unavailable")) return false;
+  return iface.every((probe) => probe.detail === NO_CODE_DETAIL);
 }
 
 function transportDetail(error: unknown): string {
