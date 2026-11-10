@@ -14,7 +14,7 @@ export interface NearClientOptions {
 
 export interface ViewResult {
   ok: boolean;
-  reason?: "method_not_found" | "execution_error";
+  reason?: "method_not_found" | "execution_error" | "code_does_not_exist";
   message?: string;
   value?: unknown;
 }
@@ -145,6 +145,9 @@ export class NearClient {
     if (!result) return { ok: true, value: null };
     if (result.error) {
       const message = String(result.error);
+      if (isHostCodeDoesNotExist(message)) {
+        return { ok: false, reason: "code_does_not_exist", message };
+      }
       if (isHostMethodNotFound(message)) {
         return { ok: false, reason: "method_not_found", message };
       }
@@ -192,6 +195,10 @@ function readAccountId(params: unknown): string {
   return "(unknown account)";
 }
 
+/**
+ * A method counts as present when the view returns a value or the guest runs and panics.
+ * Host MethodNotFound and CodeDoesNotExist do not: the method did not run.
+ */
 export function methodExists(view: ViewResult): boolean {
   return view.ok || view.reason === "execution_error";
 }
@@ -203,4 +210,13 @@ export function methodExists(view: ViewResult): boolean {
 export function isHostMethodNotFound(message: string): boolean {
   if (/GuestPanic|panic_msg/i.test(message)) return false;
   return /MethodResolveError\(MethodNotFound\)/.test(message) || message.trim() === "MethodNotFound";
+}
+
+/**
+ * Host CompilationError(CodeDoesNotExist) means the account has no contract code.
+ * A guest panic that mentions the same words means the method ran.
+ */
+export function isHostCodeDoesNotExist(message: string): boolean {
+  if (/GuestPanic|panic_msg/i.test(message)) return false;
+  return /CodeDoesNotExist/.test(message);
 }

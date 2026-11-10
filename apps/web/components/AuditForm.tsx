@@ -202,8 +202,8 @@ export function AuditForm({
       </div>
       <p className="examples-note">
         Account chips are live reads. Saved sample is the offline votron capture, not a live account. JSON in the box is
-        pasted text, not a CLI local file. ironshield.near is a Shade v2 interface in the saved seven-account snapshot.
-        That row loaded no registration quote and no approved measurements. Those checks stay not proven.
+        pasted text, not a CLI local file. ironshield.near has no contract code deployed, so the shade interface is not
+        proven. The saved seven-account snapshot still labels that row shade-v2.
       </p>
     </form>
   );
