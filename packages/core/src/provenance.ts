@@ -115,6 +115,13 @@ function provenanceFor(finding: Finding, bundle: EvidenceBundle): FindingProvena
       "The interface was not classified. A transport failure is not MethodNotFound and is not a live chain observation.",
     );
   }
+  if (finding.id === "agent.validity" && finding.ladder === "NOT_PROVEN") {
+    return row(
+      "unavailable",
+      "unavailable",
+      "Agent validity was not in the view. A missing or unrecognized field is not a fresh chain observation that the agent is invalid.",
+    );
+  }
   if (supplied || bundle.mpcFromSnapshot) {
     const source: ObservationKind = supplied ? origin : "file";
     const label =

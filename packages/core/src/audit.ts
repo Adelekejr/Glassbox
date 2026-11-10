@@ -180,9 +180,12 @@ async function collectAccount(accountId: string, network: Network, options: Audi
 
   const infoView = probeMap.get("get_contract_info")?.view;
   let ownerId: string | undefined;
+  let sawContractInfo = false;
   if (infoView?.ok && infoView.value && typeof infoView.value === "object") {
-    const info = infoView.value as { requires_tee?: boolean; owner_id?: unknown; owner?: unknown; ownerId?: unknown };
-    requiresTee = Boolean(info.requires_tee);
+    const info = infoView.value as { requires_tee?: unknown; owner_id?: unknown; owner?: unknown; ownerId?: unknown };
+    sawContractInfo = true;
+    // A missing flag is unknown. Boolean(undefined) is false and must not become local mode.
+    if (typeof info.requires_tee === "boolean") requiresTee = info.requires_tee;
     ownerId = readOwnerId(info);
   }
   const changeMethods: { name: string; exists: boolean }[] = [];
@@ -256,10 +259,12 @@ async function collectAccount(accountId: string, network: Network, options: Audi
 
   if (usedNearblocks.value) historySource = "nearblocks";
   let shadeDetail = describeShade(shade, methodProbes, account.global_contract_hash);
-  if (requiresTee === false) {
+  if (shade === "shade-v2" && requiresTee === false) {
     shadeDetail += " get_contract_info says requires_tee is false, so this registration path is Shade local mode, not a TEE.";
-  } else if (requiresTee === true) {
+  } else if (shade === "shade-v2" && requiresTee === true) {
     shadeDetail += " get_contract_info says requires_tee is true.";
+  } else if (shade === "shade-v2" && sawContractInfo && requiresTee === null) {
+    shadeDetail += " get_contract_info did not include requires_tee, so Shade local mode was not proven.";
   }
 
   const live = options.liveEndpoint
@@ -476,7 +481,10 @@ function classifyShade(probes: MethodProbe[]): ShadeKind {
   const outcome = (name: string) => probes.find((probe) => probe.name === name)?.outcome;
   const present = (name: string) => outcome(name) === "present";
   const absent = (name: string) => outcome(name) === "absent";
-  if (present("get_contract_info") || (present("get_approved_measurements") && present("get_agents"))) {
+  // get_contract_info by itself is not Shade v2. The v2 views have to answer.
+  const shadeV2View =
+    present("get_approved_measurements") || present("get_agents") || present("get_approved_ppids");
+  if ((present("get_contract_info") && shadeV2View) || (present("get_approved_measurements") && present("get_agents"))) {
     return "shade-v2";
   }
   // Absence is MethodNotFound only. A failed probe must not select an interface that depends on that method being missing.
@@ -625,6 +633,8 @@ interface CaptureFile {
   agentView?: AgentView;
   approvedCodehashes?: ApprovedCodehash[];
   accessKeys?: AccessKeyView[];
+  /** View names the capture actually recorded. Absent means none were recorded. */
+  methodsPresent?: string[];
   quoteHex?: string;
   collateral?: unknown;
   checksum?: string;
@@ -637,24 +647,46 @@ interface CaptureFile {
 function bundleFromCapture(capture: CaptureFile, label: string): EvidenceBundle {
   const tcb = capture.tcbInfo ? normalizeTcb(capture.tcbInfo) ?? capture.tcbInfo : undefined;
   const compose = tcb?.app_compose ? parseCompose(tcb.app_compose) : null;
+  const shade = capture.shade ?? "unknown";
+  const named = capture.shade
+    ? `The file named the interface ${capture.shade}.`
+    : "The file did not name an interface, so none was assumed.";
+  const redaction =
+    capture.appComposeRedacted === true
+      ? " Secret-looking env values in the stored app compose were removed before the file was written."
+      : "";
+  const hasRegistration = Boolean(
+    capture.quoteHex ||
+      capture.collateral !== undefined ||
+      capture.checksum ||
+      tcb ||
+      capture.agentId ||
+      capture.txHash ||
+      capture.blockTimestampNs ||
+      capture.originalAppComposeSha256,
+  );
+  const methodsPresent = Array.isArray(capture.methodsPresent)
+    ? capture.methodsPresent.filter((name): name is string => typeof name === "string" && name.trim().length > 0)
+    : [];
   return baseBundle(capture.contractId || label, {
     network: capture.network ?? "offline",
-    shade: capture.shade ?? "shade-v1",
-    shadeDetail:
-      "Loaded from a Glassbox capture file. Chain state was not re-read. Secret-looking env values in the stored app compose were removed before the file was written.",
+    shade,
+    shadeDetail: `Loaded from a Glassbox capture file. Chain state was not re-read. ${named}${redaction}`,
     codeHash: capture.codeHash,
     globalContractHash: capture.globalContractHash,
-    registration: {
-      quoteHex: capture.quoteHex,
-      collateral: capture.collateral,
-      checksum: capture.checksum,
-      tcbInfo: tcb,
-      appComposeSha256: capture.originalAppComposeSha256,
-      appComposeRedacted: capture.appComposeRedacted === true,
-      agentId: capture.agentId,
-      txHash: capture.txHash,
-      timestampSec: nsToSeconds(capture.blockTimestampNs),
-    },
+    registration: hasRegistration
+      ? {
+          quoteHex: capture.quoteHex,
+          collateral: capture.collateral,
+          checksum: capture.checksum,
+          tcbInfo: tcb,
+          appComposeSha256: capture.originalAppComposeSha256,
+          appComposeRedacted: capture.appComposeRedacted === true,
+          agentId: capture.agentId,
+          txHash: capture.txHash,
+          timestampSec: nsToSeconds(capture.blockTimestampNs),
+        }
+      : null,
     compose,
     agentView: capture.agentView,
     approvedCodehashes: capture.approvedCodehashes,
@@ -662,7 +694,7 @@ function bundleFromCapture(capture: CaptureFile, label: string): EvidenceBundle 
     mpc: capture.mpcAllowlists,
     mpcFromSnapshot: Boolean(capture.mpcAllowlists?.length),
     historySource: "file",
-    methodsPresent: ["get_agent"],
+    methodsPresent,
   });
 }
 
@@ -670,7 +702,9 @@ function bundleFromLooseText(label: string, text: string): EvidenceBundle {
   const compose = parseCompose(text);
   return baseBundle(label, {
     shade: "unknown",
-    shadeDetail: "This file is not JSON. Glassbox scanned it as a deployment or compose text. It was not read from chain.",
+    shadeDetail: compose
+      ? "This file is not JSON. Glassbox scanned it as a deployment or compose text. It was not read from chain."
+      : "This file is not JSON and does not look like a compose. It was not read from chain.",
     registration: null,
     compose,
     historySource: "file",
