@@ -55,6 +55,8 @@ export function assessDstack(input: {
   hasRootfsHashEvent: boolean;
   /** The os_image_hash field and the os-image-hash event payload both exist and differ. */
   osImageHashConflict?: boolean;
+  /** True only when the registration quote verified. A known fixed image needs this and the event log. */
+  quoteVerified?: boolean;
 }): DstackAssessment {
   const declaredNote = declaredVersionNote(input.compose);
   // A hash, when present, is the comparison. A declared dstack_version cannot prove a fixed image beside it.
@@ -98,6 +100,18 @@ export function assessDstack(input: {
     };
   }
   if (fixed) {
+    if (!input.hasOsImageHashEvent || input.quoteVerified !== true) {
+      const event = input.hasOsImageHashEvent
+        ? "The event log has an os-image-hash entry."
+        : "The event log does not have an os-image-hash entry.";
+      const quote = input.quoteVerified === true ? "The quote verified." : "The quote did not verify.";
+      return {
+        kind: "unknown",
+        inference: false,
+        label: "os_image_hash comparison incomplete",
+        detail: `A known fixed image needs the hash in the event log and a verified quote. ${event} ${quote} This comparison is incomplete, so the registered configuration is not a proven fixed image.${declaredNote}`,
+      };
+    }
     return {
       kind: "fixed",
       inference: false,

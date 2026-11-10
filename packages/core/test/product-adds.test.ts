@@ -63,7 +63,12 @@ test("every report carries the TEE.fail threat model", async () => {
 test("os image provenance separates a known fixed image, a vulnerable table, and unknown", () => {
   const row = hardwareAndOSMeasurements["0.5.8"]["tdx.small"].rtmrs;
   const fixedHash = "ec43cb8c5e04b6bb6c53b33b16076a01d83d01f7f4b703f2f78a0d947d6247e6";
-  const fixed = assessProvenance({ osImageHash: fixedHash, ...row, rtmr1: "ab".repeat(48) });
+  const fixed = assessProvenance({
+    osImageHash: fixedHash,
+    fixedImageAttested: true,
+    ...row,
+    rtmr1: "ab".repeat(48),
+  });
   assert.equal(fixed.ladder, "PROVEN");
   assert.match(fixed.title, /known fixed image/);
   const table = assessProvenance(row);
@@ -192,8 +197,7 @@ test("diff of two registration files states what changed", async () => {
   assert.match(text, /public_logs: false → true/);
   assert.match(text, /os_image_hash: ec43cb8c5e04/);
   assert.match(text, /contract code hash: 7EUTZnq9jErH/);
-  assert.match(text, /measurements\.provenance: PROVEN → RISKY/);
-  assert.match(text, /known fixed image/);
+  assert.match(text, /measurements\.provenance: NOT PROVEN → RISKY/);
   assert.match(text, /matches a vulnerable configuration/);
   assert.equal(left.findings.find((finding) => finding.id === "contract.code")?.ladder, "PROVEN");
   assert.equal(right.findings.find((finding) => finding.id === "contract.code")?.ladder, "NOT_PROVEN");
@@ -339,8 +343,12 @@ test("disagreeing os_image_hash sources are not a known fixed image", async () =
     { now: FROZEN, label: "hash-agreed" },
   );
   const agreedProvenance = agreed.findings.find((finding) => finding.id === "measurements.provenance");
-  assert.equal(agreedProvenance?.ladder, "PROVEN");
-  assert.match(agreedProvenance?.title ?? "", /known fixed image/);
+  const agreedRange = agreed.findings.find((finding) => finding.id === "dstack.range");
+  assert.equal(agreedProvenance?.ladder, "NOT_PROVEN");
+  assert.equal(agreedRange?.ladder, "NOT_PROVEN");
+  assert.doesNotMatch(agreedProvenance?.title ?? "", /is a known fixed image/);
+  assert.doesNotMatch(agreedRange?.title ?? "", /is a known fixed image/);
+  assert.match(`${agreedProvenance?.plainEnglish} ${agreedRange?.plainEnglish}`, /quote did not verify|not a proven fixed image|not treated as a known fixed image/);
 });
 
 test("a fixed hash does not hide a Shade table on the agent row", () => {
@@ -421,13 +429,15 @@ test("pasted JSON PROVEN rows name the file and do not claim a fresh chain read"
   assert.equal(byId["contract.code"].ladder, "PROVEN");
   assert.match(byId["contract.code"].plainEnglish, /The file supplied this code_hash/);
   assert.match(byId["contract.code"].plainEnglish, /did not call view_account/);
-  assert.equal(byId["measurements.provenance"].ladder, "PROVEN");
+  assert.equal(byId["measurements.provenance"].ladder, "NOT_PROVEN");
   assert.match(byId["measurements.provenance"].plainEnglish, /The file supplied these measurement fields/);
   assert.match(byId["measurements.provenance"].plainEnglish, /did not read them from chain/);
-  assert.equal(byId["dstack.range"].ladder, "PROVEN");
-  assert.match(byId["dstack.range"].title, /known fixed image/);
+  assert.match(byId["measurements.provenance"].plainEnglish, /not treated as a known fixed image/);
+  assert.equal(byId["dstack.range"].ladder, "NOT_PROVEN");
+  assert.doesNotMatch(byId["dstack.range"].title, /is a known fixed image/);
   assert.match(byId["dstack.range"].plainEnglish, /The file supplied this os_image_hash/);
   assert.match(byId["dstack.range"].plainEnglish, /did not read it from chain/);
+  assert.match(byId["dstack.range"].plainEnglish, /comparison is incomplete/);
   assert.match(pasted.limitations.join("\n"), /not a fresh chain read/);
   assert.doesNotMatch(formatReport(pasted), /hacked/i);
   assert.doesNotMatch(formatReport(pasted), /currently running/i);
