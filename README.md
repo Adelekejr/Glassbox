@@ -29,9 +29,9 @@ The form's examples are `ac-sandbox.votron.testnet`, `ironshield.near`, and `ref
 | Verdict | **RISKY** |
 | Counts | **10 risky, 8 not proven, 14 proven** |
 
-The ladder stops at RISKY because a full-access key can redeploy the contract. The registration quote from 27 Sep 2025 (`HczqYXdRBZfyTtnQiPqGRXe3zEhvwHu3hyCUkqMq8VjN`) did verify, including an UpToDate TCB status at that time. That verification is not a pass. The same quote is OutOfDate against fresh collateral, and the registered configuration matches a vulnerable dstack pattern: it mounts `/var/run/tappd.sock` and has no `os-image-hash` event. That pattern is an inference. It fits dstack before 0.5 and does not name an exact release.
+The report opens with: "The owner of this agent can still change its code at any time, so its secure-enclave promise does not fully hold. The software this agent registered matches a known weak setup." Then: "What to do: Do not treat this agent as locked down." Those lines are chosen from the findings. The full-access key is why the ladder stops at RISKY: that key can redeploy the contract. The registration quote from 27 Sep 2025 (`HczqYXdRBZfyTtnQiPqGRXe3zEhvwHu3hyCUkqMq8VjN`) did verify, including an UpToDate TCB status at that time. That verification is not a pass. The same quote is OutOfDate against fresh collateral, and the registered configuration matches a vulnerable dstack pattern: it mounts `/var/run/tappd.sock` and has no `os-image-hash` event. That pattern is an inference. It fits dstack before 0.5 and does not name an exact release.
 
-The same afternoon, `ironshield.near` was **RISKY** as well: **1 risky, 11 not proven, 1 proven** (generated `2026-11-10T14:18:04.647Z`). The risky finding is again a full-access key. History found three successful `register_agent` calls, and none of them included a TDX quote. The account's code hash is the empty-contract hash (`11111111111111111111111111111111`). The report's one PROVEN row says the interface is shade-v2, because a call that fails with `CodeDoesNotExist` is counted as "the method is present." Direct views that day failed with `CompilationError(CodeDoesNotExist)`. The shade-v2 line is not proof that a Shade contract is deployed there.
+The same afternoon, `ironshield.near` was **RISKY** as well: **1 risky, 11 not proven, 1 proven** (generated `2026-11-10T14:18:04.647Z`). The same opening lines say the owner can still change the code, and that this agent has not published proof it runs inside a secure enclave. History found three successful `register_agent` calls, and none of them included a TDX quote. The risky finding is the full-access key. The account's code hash is the empty-contract hash (`11111111111111111111111111111111`). The report's one PROVEN row says the interface is shade-v2, because a call that fails with `CodeDoesNotExist` is counted as "the method is present." Direct views that day failed with `CompilationError(CodeDoesNotExist)`. The shade-v2 line is not proof that a Shade contract is deployed there.
 
 Reports now open with one or two short sentences and a "What to do" line. Those sentences are chosen from findings already on the ladder. The wording says a check came back proven only when every finding is PROVEN. The counts above were read from the ladder itself.
 
@@ -91,7 +91,7 @@ flowchart LR
 
 ## Commands
 
-From the repo root, after `pnpm install`. Local `engines` allow Node 20 or newer. CI runs Node 22 and pnpm 10.33.4. These commands were run on Node v22.23.4 on 10 Nov 2026. `pnpm test` passed (core 66, cli 7, mcp 6, web 16, then the TypeScript check). That script does not read the chain. It does include the local Shade v2 sandbox test.
+From the repo root, after `pnpm install`. Local `engines` allow Node 20 or newer. CI runs Node 22 and pnpm 10.33.4. These commands were run on Node v22.23.4 on 10 Nov 2026. `pnpm test` passed: core 70, cli 7, mcp 6, web 18, the daily-health script 3, then the TypeScript check. That script does not read the chain. It does include the local Shade v2 sandbox test and the health-file parser tests.
 
 | What | Command |
 | --- | --- |
