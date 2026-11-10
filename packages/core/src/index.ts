@@ -31,6 +31,7 @@ export { classifyImage, isSecretEnvName, parseCompose, redactAppCompose, sha256H
 export { AccountNotFoundError } from "./near/errors.js";
 export { NearClient } from "./near/rpc.js";
 export { isLiveChainProof } from "./provenance.js";
+export { buildPlainSummary } from "./plain-summary.js";
 export { buildReport, formatReport, presentCheck, type AgentCheck } from "./report.js";
 export { ANCHOR_INSTRUCTIONS, planReportAnchor } from "./signed/anchor.js";
 export { canonicalJson, canonicalSha256 } from "./signed/canonical.js";
@@ -52,5 +53,6 @@ export {
   type MethodProbe,
   type Network,
   type ObservationKind,
+  type PlainSummary,
   type Report,
 } from "./types.js";

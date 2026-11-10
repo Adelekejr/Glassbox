@@ -1,0 +1,49 @@
+name: Daily health
+
+# The site reads a public JSON file on the `status` branch. That is more
+# reliable than the public Actions runs API: the unauthenticated API allows
+# about 60 requests an hour, which a hosted site would share across regions,
+# and a run's step list is a poor place to keep each check's result. This job
+# writes the file even when a check fails, then exits non-zero so the failure
+# is emailed. The browser never sees a token. It only receives HTML that was
+# rendered from that public file.
+#
+# NearBlocks: packages/core/src/near/history.ts calls
+# GET /v3/accounts/{account}/receipts on api.nearblocks.io and
+# api-testnet.nearblocks.io. This job pings that same path.
+# The two live audits are spaced past one minute because the free NearBlocks
+# budget is about six calls a minute and one audit uses several of them.
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: glassbox-daily-health
+  cancel-in-progress: false
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check the live audit and NearBlocks
+        id: check
+        run: node .github/scripts/audit-health.mjs
+        continue-on-error: true
+      - name: Publish the public status file
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node .github/scripts/publish-status.mjs
+      - name: Fail the job when a check failed
+        if: steps.check.outcome != 'success'
+        run: exit 1

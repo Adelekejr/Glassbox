@@ -42,6 +42,7 @@ test("check_agent returns the ladder for pasted registration JSON", async () => 
     const parsed = JSON.parse(text) as {
       overall: string;
       summary: string;
+      plainSummary: { text: string; whatToDo: string };
       report: {
         shade: string;
         verifier: { version: string; qeIdentity: string };
@@ -55,6 +56,9 @@ test("check_agent returns the ladder for pasted registration JSON", async () => 
     };
     assert.equal(parsed.overall, "RISKY");
     assert.match(parsed.summary, /Highest rung/);
+    assert.match(parsed.plainSummary.text, /change its code/);
+    assert.match(parsed.plainSummary.whatToDo, /locked down/);
+    assert.doesNotMatch(parsed.plainSummary.text, /\bsafe\b/i);
     assert.equal(parsed.report.shade, "shade-v1");
     assert.equal(parsed.report.verifier.version, "0.7.1");
     assert.equal(parsed.report.verifier.qeIdentity, "mandatory");

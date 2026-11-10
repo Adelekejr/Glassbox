@@ -1,6 +1,8 @@
 import { Brand } from "./Brand";
+import { loadHealthStatus } from "../lib/health-status";
 
-export function SiteFooter() {
+export async function SiteFooter() {
+  const status = await loadHealthStatus();
   return (
     <footer className="footer">
       <div className="wrap">
@@ -22,6 +24,7 @@ export function SiteFooter() {
                 <li><a href="/#audit">Audit</a></li>
                 <li><a href="/#ladder">The ladder</a></li>
                 <li><a href="/accounts">Account list</a></li>
+                <li><a href="/status">Status</a></li>
               </ul>
             </div>
             <div>
@@ -43,6 +46,11 @@ export function SiteFooter() {
           </div>
         </div>
         <div className="footer-base">
+          <a className="health-status" href="/status" data-state={status.state}>
+            <span className="health-dot" aria-hidden="true" />
+            <span>{status.label}</span>
+            <span className="health-time">{status.checkedLabel}</span>
+          </a>
           <span>Copyright (c) 2026 Adelekejr · MIT</span>
           <span>This site is deployed at glassbox-inky.vercel.app.</span>
         </div>

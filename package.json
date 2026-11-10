@@ -9,7 +9,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "pnpm --filter core test && pnpm --filter cli test && pnpm --filter glassbox-mcp test && node --import tsx --test apps/web/lib/network.test.ts apps/web/lib/limit.test.ts apps/web/lib/admit.test.ts apps/web/lib/audit-client.test.ts apps/web/lib/saved-sample.test.ts apps/web/lib/headers.test.ts apps/web/lib/dcap-external.test.ts && pnpm run typecheck",
+    "test": "pnpm --filter core test && pnpm --filter cli test && pnpm --filter glassbox-mcp test && node --import tsx --test apps/web/lib/network.test.ts apps/web/lib/limit.test.ts apps/web/lib/admit.test.ts apps/web/lib/audit-client.test.ts apps/web/lib/saved-sample.test.ts apps/web/lib/headers.test.ts apps/web/lib/dcap-external.test.ts apps/web/lib/health-status.test.ts && node --test .github/scripts/audit-health.test.mjs && pnpm run typecheck",
     "typecheck": "tsc -p packages/core --noEmit && tsc -p packages/cli --noEmit && tsc -p packages/mcp --noEmit && tsc -p apps/web --noEmit",
     "smoke": "pnpm --filter core smoke"
   },

@@ -14,6 +14,7 @@ import { verifyQuoteAt } from "./checks/tdx.js";
 import { upgradePlainEnglish } from "./checks/upgrade.js";
 import { matchShadeMeasurements } from "./data/shade-measurements.js";
 import { formatHistoryCacheAge } from "./near/history.js";
+import { buildPlainSummary } from "./plain-summary.js";
 import { attachProvenance } from "./provenance.js";
 import { canonicalSha256 } from "./signed/canonical.js";
 import { planReportAnchor } from "./signed/anchor.js";
@@ -35,6 +36,7 @@ import {
   type Freshness,
   type Ladder,
   type Measurements,
+  type PlainSummary,
   type Report,
   type ReportFacts,
   type ReportInputs,
@@ -45,11 +47,17 @@ const LADDER_ORDER: Ladder[] = ["RISKY", "NOT_PROVEN", "PROVEN"];
 export interface AgentCheck {
   overall: Ladder;
   summary: string;
+  plainSummary: PlainSummary;
   report: Report;
 }
 
 export function presentCheck(report: Report): AgentCheck {
-  return { overall: report.overall, summary: report.overallPlainEnglish, report };
+  return {
+    overall: report.overall,
+    summary: report.overallPlainEnglish,
+    plainSummary: report.plainSummary,
+    report,
+  };
 }
 
 export function summarizeFindings(findings: Finding[]): {
@@ -105,6 +113,7 @@ export function buildReport(bundle: EvidenceBundle, options?: { now?: Date; anch
     summary,
     overall,
     overallPlainEnglish: `Highest rung on this ladder is ${overall.replace("_", " ")} (${summary.risky} risky, ${summary.notProven} not proven, ${summary.proven} proven). That is the strongest concern already listed. It is not a separate check.`,
+    plainSummary: buildPlainSummary(findings),
     findings,
     methodProbes: bundle.methodProbes,
     approvalHistory: bundle.approvalHistory ?? [],
@@ -134,6 +143,11 @@ export function buildReport(bundle: EvidenceBundle, options?: { now?: Date; anch
 
 export function formatReport(report: Report): string {
   const lines: string[] = [];
+  if (report.plainSummary?.text) {
+    lines.push(report.plainSummary.text);
+    if (report.plainSummary.whatToDo) lines.push(`What to do: ${report.plainSummary.whatToDo}`);
+    lines.push("");
+  }
   lines.push("Glassbox report");
   lines.push(`Target:     ${report.target}`);
   lines.push(`Network:    ${report.network}`);

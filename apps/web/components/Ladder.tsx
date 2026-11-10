@@ -47,6 +47,7 @@ export interface AuditPayload {
     shade: string;
     generatedAt?: string;
     summary: { proven: number; notProven: number; risky: number };
+    plainSummary?: { text: string; whatToDo: string };
     findings: Finding[];
     approvalHistory: ApprovalEvent[];
     approvalHistoryNote?: string;
@@ -189,6 +190,17 @@ export function Ladder({ payload }: { payload: AuditPayload }) {
           <span className={`glyph ${payload.overall}`} aria-hidden="true" />
           {LABEL[payload.overall]}
         </span>
+        {report.plainSummary?.text ? (
+          <div className="plain-summary">
+            <p>{report.plainSummary.text}</p>
+            {report.plainSummary.whatToDo ? (
+              <p className="plain-summary-action">
+                <span className="label">What to do</span>
+                {report.plainSummary.whatToDo}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         <p className="report-summary">{payload.summary}</p>
       </header>
 
