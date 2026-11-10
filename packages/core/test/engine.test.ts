@@ -220,6 +220,7 @@ test("an os image hash outside the fixed list is not called a compromise", async
     osImageHash: "ec43cb8c5e04b6bb6c53b33b16076a01d83d01f7f4b703f2f78a0d947d6247e6",
     hasOsImageHashEvent: true,
     hasRootfsHashEvent: false,
+    quoteVerified: true,
   });
   assert.equal(fixed.kind, "fixed");
   assert.equal(fixed.label, "dstack-0.6.1");
@@ -422,6 +423,7 @@ test("a declared fixed version is not proven without an os_image_hash", async ()
 
   const matched = assessDstack({
     osImageHash: "ec43cb8c5e04b6bb6c53b33b16076a01d83d01f7f4b703f2f78a0d947d6247e6",
+    quoteVerified: true,
     compose: {
       publicLogs: null,
       publicSysinfo: null,

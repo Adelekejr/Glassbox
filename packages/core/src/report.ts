@@ -3,7 +3,7 @@ import { DCAP_QVL_VERSION, PINNED_PCCS_URL, verifierMetadata } from "./checks/pc
 import { assessApprover, assessContractCode, assessRemove } from "./checks/contract.js";
 import { unattemptedLiveObservation } from "./checks/liveness.js";
 import { assessProvenance } from "./checks/provenance.js";
-import { isZeroMeasurement, measurementsMatch } from "./evidence/measurements.js";
+import { compareMeasurements, isZeroMeasurement, type MeasurementComparison } from "./evidence/measurements.js";
 import { eventPayload, hasEvent, selectOsImageHash } from "./evidence/registration.js";
 import { assessAccessKeys } from "./checks/access-keys.js";
 import { assessDstack } from "./checks/dstack.js";
@@ -584,34 +584,58 @@ function validityFinding(bundle: EvidenceBundle, now: Date): Finding | null {
   const agents = bundle.v2Agents;
   if (!agents || agents.length === 0) return null;
   const expired = agents.filter((agent) => agent.validUntilMs !== undefined && agent.validUntilMs < now.getTime());
-  const invalid = agents.filter((agent) => !agent.valid);
-  if (expired.length === 0 && invalid.length === 0) {
+  const invalid = agents.filter((agent) => agent.valid === false);
+  const unknown = agents.filter((agent) => agent.valid == null);
+  if (invalid.length > 0 || expired.length > 0) {
     return make(
       "agent.validity",
-      "PROVEN",
-      "The contract reports the registered agent as valid",
+      "RISKY",
+      "A registered agent is not valid on the contract",
       false,
-      agents
-        .map((agent) => {
-          const until = agent.validUntilMs !== undefined ? (isoFromUnixMs(agent.validUntilMs) ?? "an unreadable time") : "an unknown time";
-          return `${agent.accountId} is ${agent.validity} until ${until}.`;
-        })
-        .join(" "),
+      [
+        ...invalid.map((agent) => `${agent.accountId} is ${agent.validity}.`),
+        ...expired.map(
+          (agent) =>
+            `${agent.accountId} validity ended at ${isoFromUnixMs(agent.validUntilMs ?? 0) ?? "an unreadable time"}.`,
+        ),
+      ].join(" "),
+    );
+  }
+  if (unknown.length > 0) {
+    const named = unknown
+      .map((agent) => `The view for ${agent.accountId} did not include a recognized validity field.`)
+      .join(" ");
+    return make(
+      "agent.validity",
+      "NOT_PROVEN",
+      "Agent validity was not in the view",
+      false,
+      `${named} Whether that agent is valid was not proven.`,
     );
   }
   return make(
     "agent.validity",
-    "RISKY",
-    "A registered agent is not valid on the contract",
+    "PROVEN",
+    "The contract reports the registered agent as valid",
     false,
-    [
-      ...invalid.map((agent) => `${agent.accountId} is ${agent.validity}.`),
-      ...expired.map(
-        (agent) =>
-          `${agent.accountId} validity ended at ${isoFromUnixMs(agent.validUntilMs ?? 0) ?? "an unreadable time"}.`,
-      ),
-    ].join(" "),
+    agents
+      .map((agent) => {
+        const until = agent.validUntilMs !== undefined ? (isoFromUnixMs(agent.validUntilMs) ?? "an unreadable time") : "an unknown time";
+        return `${agent.accountId} is ${agent.validity} until ${until}.`;
+      })
+      .join(" "),
   );
+}
+
+function bestMeasurementComparison(
+  rows: ApprovedMeasurementRow[],
+  candidate: ApprovedMeasurementRow,
+  requireClaimedFields: boolean,
+): MeasurementComparison {
+  const results = rows.map((row) => compareMeasurements(row, candidate, requireClaimedFields));
+  if (results.includes("match")) return "match";
+  if (results.every((result) => result === "mismatch")) return "mismatch";
+  return "incomplete";
 }
 
 function codehashFinding(bundle: EvidenceBundle): Finding {
@@ -708,25 +732,39 @@ function measurementListFinding(bundle: EvidenceBundle): Finding {
   const rows = bundle.approvedMeasurements ?? [];
   const registered = registeredMeasurementRows(bundle);
   if (registered.length > 0) {
-    const misses = registered.filter((candidate) => !rows.some((row) => measurementsMatch(row, candidate)));
-    if (misses.length === 0) {
+    const requireClaimed = Boolean(bundle.v2Agents?.length);
+    const compared = registered.map((candidate) => bestMeasurementComparison(rows, candidate, requireClaimed));
+    if (compared.every((result) => result === "match")) {
       return make(
         "measurements.approved",
         "PROVEN",
         "Registered measurements are on the approved list",
         false,
-        bundle.v2Agents?.length
+        requireClaimed
           ? `Each registered agent's MRTD, RTMR0 through RTMR2, key-provider digest, and app-compose hash match a row from get_approved_measurements (${registered.length} agent${registered.length === 1 ? "" : "s"}).`
           : "The registered MRTD and RTMR0 through RTMR2 match a row from the contract's approved-measurements view.",
         bundle.v2Agents?.map((agent) => ({ label: agent.accountId, detail: agent.validity })) ?? [],
       );
     }
+    const mismatches = compared.filter((result) => result === "mismatch").length;
+    if (mismatches > 0) {
+      return make(
+        "measurements.approved",
+        "RISKY",
+        "Registered measurements are not on the approved list",
+        false,
+        `The contract published ${rows.length} approved measurement row${rows.length === 1 ? "" : "s"}, and ${mismatches} registered measurement set${mismatches === 1 ? " is" : "s are"} not on it.`,
+        [{ label: "Approved rows", detail: String(rows.length) }],
+      );
+    }
     return make(
       "measurements.approved",
-      "RISKY",
-      "Registered measurements are not on the approved list",
+      "NOT_PROVEN",
+      "Approved measurement comparison is incomplete",
       false,
-      `The contract published ${rows.length} approved measurement row${rows.length === 1 ? "" : "s"}, and ${misses.length} registered measurement set${misses.length === 1 ? " is" : "s are"} not on it.`,
+      requireClaimed
+        ? "A match needs MRTD, RTMR0 through RTMR2, the key-provider digest, and the app-compose hash on both the registered agent and the approved row. At least one of those fields was missing, so the comparison is incomplete. A missing field is not a match."
+        : "A match needs MRTD and RTMR0 through RTMR2 on both the registered measurements and the approved row. At least one of those fields was missing, so the comparison is incomplete. A missing field is not a match.",
       [{ label: "Approved rows", detail: String(rows.length) }],
     );
   }
@@ -762,8 +800,9 @@ function composeFindings(bundle: EvidenceBundle, now: Date): Finding[] {
     osImageHash: selected.hash,
     osImageHashConflict: selected.conflict,
     compose,
-    hasOsImageHashEvent: hasEvent(tcb?.event_log, "os-image-hash"),
+    hasOsImageHashEvent: selected.inEventLog,
     hasRootfsHashEvent: hasEvent(tcb?.event_log, "rootfs-hash"),
+    quoteVerified: registrationQuoteVerified(bundle),
   });
   if (!compose && assessment.kind === "unknown" && bundle.shade === "measurements-registry") {
     return [];
@@ -1247,13 +1286,14 @@ function mpcFinding(bundle: EvidenceBundle, now: Date): Finding {
 
 function shadeFinding(bundle: EvidenceBundle): Finding {
   if (bundle.shade === "unknown") {
+    const evidence = codeEvidence(bundle).filter((item) => !(fromFile(bundle) && item.label === "Account"));
     return make(
       "shade.interface",
       "NOT_PROVEN",
       "Contract interface was not recognised",
       false,
       bundle.shadeDetail,
-      codeEvidence(bundle),
+      evidence,
     );
   }
   return make("shade.interface", "PROVEN", `Account interface is ${bundle.shade}`, false, bundle.shadeDetail, [
@@ -1555,6 +1595,7 @@ function provenanceFinding(bundle: EvidenceBundle): Finding {
   const assessment = assessProvenance({
     osImageHash: selected.hash,
     osImageHashConflict: selected.conflict,
+    fixedImageAttested: selected.inEventLog && registrationQuoteVerified(bundle),
     ...measurements,
   });
   const regMethod = bundle.shade === "shade-v1-worker" ? "register_worker" : "register_agent";
@@ -1736,6 +1777,16 @@ function reportInputs(bundle: EvidenceBundle): ReportInputs {
 function attributionLines(bundle: EvidenceBundle): string[] {
   if (bundle.historySource !== "nearblocks") return [];
   return ["Powered by Nearblocks.io APIs."];
+}
+
+function registrationQuoteVerified(bundle: EvidenceBundle): boolean {
+  const registration = bundle.registration;
+  if (!registration?.quoteHex || !registration.collateral) return false;
+  const when =
+    typeof registration.timestampSec === "number"
+      ? registration.timestampSec
+      : fallbackCollateralTime(registration.collateral);
+  return verifyQuoteAt(registration.quoteHex, registration.collateral, when).ok === true;
 }
 
 function fallbackCollateralTime(collateral: unknown): number {

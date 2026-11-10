@@ -97,22 +97,30 @@ export function hasEvent(events: EventLogEntry[] | undefined, name: string): boo
 }
 
 export interface OsImageHashSelection {
-  /** Hash used for the fixed-image comparison. Absent when the two sources disagree or neither is present. */
+  /**
+   * Hash available to compare. A side field alone is still returned so a
+   * non-matching hash can stay "not a known fixed image". It is not a known
+   * fixed image unless `inEventLog` is true and the quote verified.
+   */
   hash?: string;
   /** True when `os_image_hash` and the os-image-hash event payload both exist and are not the same hash. */
   conflict: boolean;
+  /** True only when the event log carries the hash, and the side field agrees when it is also present. */
+  inEventLog: boolean;
 }
 
 /**
  * The field and the event are different inputs. When both are present they
- * must be the same hash before either one can be a known fixed image.
+ * must be the same hash. A side-field hash with no event payload is not in
+ * the event log, so it cannot by itself be a known fixed image.
  */
 export function selectOsImageHash(tcb: TcbInfo | null | undefined): OsImageHashSelection {
   const field = tcb?.os_image_hash?.trim();
   const event = eventPayload(tcb?.event_log, "os-image-hash");
-  if (field && event && !sameOsHex(field, event)) return { conflict: true };
-  const hash = field || event;
-  return hash ? { hash, conflict: false } : { conflict: false };
+  if (field && event && !sameOsHex(field, event)) return { conflict: true, inEventLog: false };
+  if (event) return { hash: field || event, conflict: false, inEventLog: true };
+  if (field) return { hash: field, conflict: false, inEventLog: false };
+  return { conflict: false, inEventLog: false };
 }
 
 function sameOsHex(left: string, right: string): boolean {

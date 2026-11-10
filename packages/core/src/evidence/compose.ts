@@ -87,6 +87,7 @@ export function parseCompose(input: unknown): ComposeFacts | null {
   const kmsEnabled = firstBool(obj?.kms_enabled, tee?.kms_enabled) ?? yamlBool(text, "kms_enabled");
   const hasEncryptedEnv = encryptedPresent(obj) || yamlKeyPresent(text, "encrypted_env") || yamlKeyPresent(text, "encrypted_environment");
   if (!obj && !scanText.trim()) return null;
+  if (!looksLikeCompose(obj && !Array.isArray(obj) ? obj : null, scanText || text)) return null;
   return {
     publicLogs,
     publicSysinfo,
@@ -243,7 +244,41 @@ function pushSockets(text: string, path: string, into: string[]): void {
 
 function readAllowedEnvs(value: unknown): string[] | null {
   if (!Array.isArray(value)) return null;
-  return value.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean);
+  // Keep blank entries. Dropping them turned allowed_envs: [""] into an empty list and a false PROVEN.
+  return value.filter((item): item is string => typeof item === "string").map((item) => item.trim());
+}
+
+const COMPOSE_KEYS = [
+  "docker_compose_file",
+  "dockerCompose",
+  "tee_config",
+  "services",
+  "env",
+  "environment",
+  "allowed_envs",
+  "pre_launch_script",
+  "bash_script",
+  "public_logs",
+  "public_sysinfo",
+  "kms_enabled",
+  "dstack_version",
+  "encrypted_env",
+  "encrypted_environment",
+  "encryptedEnv",
+  "volumes",
+  "devices",
+  "image",
+] as const;
+
+function looksLikeCompose(obj: Record<string, unknown> | null, text: string): boolean {
+  if (obj) {
+    for (const key of COMPOSE_KEYS) {
+      if (obj[key] !== undefined) return true;
+    }
+  }
+  return /^\s*(services|image|allowed_envs|public_logs|public_sysinfo|kms_enabled|dstack_version|encrypted_env|encrypted_environment|tee_config|pre_launch_script|bash_script|volumes|devices)\s*:/m.test(
+    text,
+  );
 }
 
 function encryptedPresent(obj: Record<string, unknown> | null): boolean {
@@ -270,10 +305,7 @@ function yamlList(text: string, key: string): string[] | null {
     if (indent === null) {
       const inline = line.match(new RegExp(`^\\s*${key}\\s*:\\s*\\[(.*)\\]\\s*$`));
       if (inline) {
-        return inline[1]
-          .split(",")
-          .map((item) => unquote(item.trim()))
-          .filter(Boolean);
+        return inline[1].split(",").map((item) => unquote(item.trim()));
       }
       const header = line.match(new RegExp(`^(\\s*)${key}\\s*:\\s*$`));
       if (header) {

@@ -18,6 +18,8 @@ export interface ProvenanceAssessment {
 export function assessProvenance(input: {
   osImageHash?: string | null;
   osImageHashConflict?: boolean;
+  /** True when the hash is in the event log and the quote verified. Otherwise a fixed-list hit is not PROVEN. */
+  fixedImageAttested?: boolean;
   mrtd?: string | null;
   rtmr0?: string | null;
   rtmr1?: string | null;
@@ -40,10 +42,16 @@ export function assessProvenance(input: {
       detail:
         "Not present. The published fixed images are the dstack 0.5.12 family and dstack 0.6.1, and they are identified by this hash.",
     });
-  } else if (fixed) {
+  } else if (fixed && input.fixedImageAttested) {
     evidence.push({
       label: "os_image_hash",
       detail: `Matches the published fixed image ${fixed.name}.`,
+    });
+  } else if (fixed) {
+    evidence.push({
+      label: "os_image_hash",
+      detail:
+        "Not used as a known fixed image. That claim needs the hash in the os-image-hash event and a verified quote.",
     });
   } else {
     evidence.push({
@@ -128,6 +136,16 @@ export function assessProvenance(input: {
       title: "Registered measurements disagree with a known fixed image",
       inference: false,
       detail: `os_image_hash matches the published fixed image ${fixed.name}, and RTMR1 and RTMR2 match Shade's table for dstack ${cleanTable.version} (a vulnerable range). Those comparisons disagree. Glassbox does not treat the registered configuration as a known fixed image. The Shade row is a comparison, not a measurement Glassbox computed.`,
+      evidence,
+    };
+  }
+  if (fixed && !input.fixedImageAttested) {
+    return {
+      ladder: "NOT_PROVEN",
+      title: "OS image provenance is unknown",
+      inference: false,
+      detail:
+        "The os_image_hash was not both in the event log and covered by a verified quote, so it was not treated as a known fixed image.",
       evidence,
     };
   }

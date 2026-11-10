@@ -308,7 +308,8 @@ export interface ShadeV2Agent {
   ppid?: string;
   validUntilMs?: number;
   validity: string;
-  valid: boolean;
+  /** null when the view omitted validity or the value was not recognized. */
+  valid: boolean | null;
 }
 
 export interface EvidenceBundle {

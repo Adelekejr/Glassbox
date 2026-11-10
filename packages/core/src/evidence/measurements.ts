@@ -58,16 +58,42 @@ export function isZeroMeasurement(row: ApprovedMeasurementRow): boolean {
   return [row.mrtd, row.rtmr0, row.rtmr1, row.rtmr2].every((value) => typeof value === "string" && /^0+$/.test(value.replace(/^0x/, "")));
 }
 
-export function measurementsMatch(approved: ApprovedMeasurementRow, registered: ApprovedMeasurementRow): boolean {
-  const staticFields = ["mrtd", "rtmr0", "rtmr1", "rtmr2"] as const;
-  if (!staticFields.every((field) => same(approved[field], registered[field]))) return false;
-  if (registered.key_provider_event_digest && approved.key_provider_event_digest) {
-    if (!same(approved.key_provider_event_digest, registered.key_provider_event_digest)) return false;
+export type MeasurementComparison = "match" | "mismatch" | "incomplete";
+
+const STATIC_FIELDS = ["mrtd", "rtmr0", "rtmr1", "rtmr2"] as const;
+const CLAIMED_FIELDS = ["key_provider_event_digest", "app_compose_hash_payload"] as const;
+
+/**
+ * A field counts as a match only when both sides carry it and the values agree.
+ * A missing key-provider digest or app-compose hash is incomplete, not a match.
+ * When requireClaimedFields is false, those two are compared only if both sides have them
+ * (the non-v2 sentence does not claim them).
+ */
+export function compareMeasurements(
+  approved: ApprovedMeasurementRow,
+  registered: ApprovedMeasurementRow,
+  requireClaimedFields: boolean,
+): MeasurementComparison {
+  let incomplete = false;
+  const fields = requireClaimedFields ? [...STATIC_FIELDS, ...CLAIMED_FIELDS] : [...STATIC_FIELDS];
+  for (const field of fields) {
+    const result = compareField(approved[field], registered[field]);
+    if (result === "mismatch") return "mismatch";
+    if (result === "incomplete") incomplete = true;
   }
-  if (registered.app_compose_hash_payload && approved.app_compose_hash_payload) {
-    if (!same(approved.app_compose_hash_payload, registered.app_compose_hash_payload)) return false;
+  if (!requireClaimedFields) {
+    for (const field of CLAIMED_FIELDS) {
+      const left = approved[field];
+      const right = registered[field];
+      if (left && right && !same(left, right)) return "mismatch";
+    }
   }
-  return true;
+  return incomplete ? "incomplete" : "match";
+}
+
+function compareField(left?: string, right?: string): MeasurementComparison {
+  if (!left || !right) return "incomplete";
+  return same(left, right) ? "match" : "mismatch";
 }
 
 export function approvalEventsFromCalls(method: string, calls: HistoryCall[]): ApprovalEvent[] {
@@ -99,15 +125,15 @@ function summarizeApprovalArgs(args: unknown): string {
   return "arguments present";
 }
 
-function describeValidity(value: unknown): { valid: boolean; text: string } {
+function describeValidity(value: unknown): { valid: boolean | null; text: string } {
   if (value === "Valid") return { valid: true, text: "Valid" };
+  if (value === "Invalid") return { valid: false, text: "Invalid" };
   if (value && typeof value === "object" && "Invalid" in value) {
     const reasons = (value as { Invalid: unknown }).Invalid;
-    const text = Array.isArray(reasons) ? reasons.map(String).join(", ") : JSON.stringify(reasons);
-    return { valid: false, text: `Invalid (${text})` };
+    const text = Array.isArray(reasons) ? reasons.map(String).filter(Boolean).join(", ") : "";
+    return { valid: false, text: text ? `Invalid (${text})` : "Invalid" };
   }
-  if (typeof value === "string") return { valid: false, text: value };
-  return { valid: false, text: "validity was not in the view" };
+  return { valid: null, text: "" };
 }
 
 function asMillis(value: unknown): number | undefined {

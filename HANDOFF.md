@@ -14,7 +14,7 @@ Written 2026-11-04 so another session can continue without re-deriving the rules
 - Read-only NEAR JSON-RPC. FastNEAR public RPC, then `near.org`. Archival RPC for the registration transaction. About 300 ms between ordinary RPC calls, about 1 s on the archival client. No signing, no transactions.
 - Network from the account suffix: `.testnet`, `.near`. Anything else (today: `v1.signer`) is tried on mainnet, then testnet.
 - Shade interface detection by view methods, not by guessing a code hash:
-  - `get_contract_info`, or `get_approved_measurements` together with `get_agents` → shade-v2
+  - `get_contract_info` together with a Shade v2 view (`get_agents`, `get_approved_measurements`, or `get_approved_ppids`), or `get_approved_measurements` together with `get_agents` → shade-v2. `get_contract_info` alone is not shade-v2. A missing `requires_tee` is not local mode.
   - `get_agent` → shade-v1
   - `get_worker` → shade-v1-worker
   - `get_approved_measurements` alone → measurements-registry (this is `worker.outlayer.testnet`)
