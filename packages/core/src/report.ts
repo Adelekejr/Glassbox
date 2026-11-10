@@ -12,6 +12,7 @@ import { measurementsEqual, replayAll } from "./checks/rtmr.js";
 import { verifyQuoteAt } from "./checks/tdx.js";
 import { upgradePlainEnglish } from "./checks/upgrade.js";
 import { matchShadeMeasurements } from "./data/shade-measurements.js";
+import { formatHistoryCacheAge } from "./near/history.js";
 import { attachProvenance } from "./provenance.js";
 import { canonicalSha256 } from "./signed/canonical.js";
 import { planReportAnchor } from "./signed/anchor.js";
@@ -246,9 +247,7 @@ function attestationFindings(bundle: EvidenceBundle, now: Date): Finding[] {
         "NOT_PROVEN",
         "No registration quote was loaded",
         false,
-        registration
-          ? "A registration record was found, but it did not include a TDX quote."
-          : `No successful register_agent or register_worker arguments were loaded, so the TDX quote was not verified.${bundle.historyError ? ` History error: ${bundle.historyError}` : ""}`,
+        missingQuoteText(bundle),
         countEvidence(bundle),
       ),
     ];
@@ -273,7 +272,7 @@ function attestationFindings(bundle: EvidenceBundle, now: Date): Finding[] {
     : null;
   findings.push(signatureFinding(bundle, stored));
   findings.push(qeIdentityFinding(bundle, stored));
-  findings.push(registrationTcbFinding(bundle, stored, when));
+  findings.push(noteRegistrationCache(bundle, registrationTcbFinding(bundle, stored, when)));
   findings.push(freshTcbFinding(bundle, fresh));
   findings.push(advisoryFinding(bundle, stored, fresh));
 
@@ -621,6 +620,29 @@ function codehashFinding(bundle: EvidenceBundle): Finding {
   const network = bundle.network === "offline" ? "testnet" : bundle.network;
   const file = fromFile(bundle);
   const agentProbe = bundle.methodProbes?.find((probe) => probe.name === "get_agent");
+  const regMethod = bundle.shade === "shade-v1-worker" ? "register_worker" : "register_agent";
+  const historyMiss = [regMethod, "approve_codehash"].filter((method) => bundle.historyFailedMethods?.includes(method));
+  if (!file && historyMiss.length > 0 && !codehash) {
+    return make(
+      "codehash.approved",
+      "NOT_PROVEN",
+      "Agent codehash was not loaded",
+      false,
+      `Could not read history for ${historyMiss.join(", ")}, so the registering account was not known and get_agent was not called. A failed history read is not an empty index.`,
+    );
+  }
+  if (!file && bundle.historyFailedMethods?.includes("approve_codehash")) {
+    return make(
+      "codehash.approved",
+      "NOT_PROVEN",
+      "App codehash was not compared with approve_codehash history",
+      false,
+      withCodehashCache(
+        bundle,
+        `Could not read history for approve_codehash${codehash ? `. get_agent returns codehash ${codehash}` : ""}, so this codehash was not compared with an approval. A failed history read is not proof the codehash was never approved.`,
+      ),
+    );
+  }
   if (!codehash && (agentProbe?.outcome === "unavailable" || bundle.agentViewError)) {
     const detail = bundle.agentViewError ?? agentProbe?.detail ?? "the RPC call failed";
     return make(
@@ -652,9 +674,12 @@ function codehashFinding(bundle: EvidenceBundle): Finding {
     } else if (hit.txHash) {
       evidence.push({ label: file ? "approve_codehash row in the file" : "approve_codehash transaction", detail: hit.txHash });
     }
-    const sentence = file
-      ? `The file records codehash ${codehash}, and an approve_codehash row in that file has the same value. This run did not call get_agent or re-read that transaction. On Shade v1 this is the app image digest, not a TDX measurement.`
-      : `get_agent returns codehash ${codehash}, and an approve_codehash transaction records that same value. On Shade v1 this is the app image digest, not a TDX measurement.`;
+    const sentence = withCodehashCache(
+      bundle,
+      file
+        ? `The file records codehash ${codehash}, and an approve_codehash row in that file has the same value. This run did not call get_agent or re-read that transaction. On Shade v1 this is the app image digest, not a TDX measurement.`
+        : `get_agent returns codehash ${codehash}, and an approve_codehash transaction records that same value. On Shade v1 this is the app image digest, not a TDX measurement.`,
+    );
     return make(
       "codehash.approved",
       "PROVEN",
@@ -666,13 +691,15 @@ function codehashFinding(bundle: EvidenceBundle): Finding {
   }
   const missed = file
     ? `The file records codehash ${codehash}. It was not in the approve_codehash rows in this file. This run did not call get_agent. An index can be incomplete, so this is not proof the codehash was never approved.`
-    : `get_agent returns codehash ${codehash}. It was not in the approve_codehash history returned for this account. That index can be incomplete, so this is not proof the codehash was never approved.`;
+    : bundle.codehashArgsUnreadable
+      ? `get_agent returns codehash ${codehash}. Arguments for one or more approve_codehash transactions could not be read, so this is not proof the codehash was never approved.`
+      : `get_agent returns codehash ${codehash}. It was not in the approve_codehash history returned for this account. That index can be incomplete, so this is not proof the codehash was never approved.`;
   return make(
     "codehash.approved",
     "NOT_PROVEN",
     "App codehash was not seen in approve_codehash history",
     false,
-    missed,
+    withCodehashCache(bundle, missed),
     [{ label: "approve_codehash rows scanned", detail: String(approved.length) }],
   );
 }
@@ -746,7 +773,14 @@ function composeFindings(bundle: EvidenceBundle, now: Date): Finding[] {
     dstack.plainEnglish += " The file supplied this os_image_hash. This run did not read it from chain.";
   }
   const findings: Finding[] = [dstack, upgradeFinding(bundle, assessment, now)];
-  if (!compose) return findings;
+  if (!compose) {
+    const regMethod = bundle.shade === "shade-v1-worker" ? "register_worker" : "register_agent";
+    if (!fromFile(bundle) && bundle.historyFailedMethods?.includes(regMethod)) {
+      const note = ` ${bundle.historyError ?? `Could not read history for ${regMethod}.`} The registered configuration was not loaded. This is not an empty registration.`;
+      for (const finding of findings) finding.plainEnglish += note;
+    }
+    return findings;
+  }
   findings.push(imageFinding(compose));
   findings.push(logsFinding(compose));
   findings.push(sysinfoFinding(compose));
@@ -1434,6 +1468,36 @@ function fromFile(bundle: EvidenceBundle): boolean {
   return bundle.historySource === "file";
 }
 
+function missingQuoteText(bundle: EvidenceBundle): string {
+  const regMethod = bundle.shade === "shade-v1-worker" ? "register_worker" : "register_agent";
+  let text: string;
+  if (!fromFile(bundle) && bundle.historyFailedMethods?.includes(regMethod)) {
+    text = `${bundle.historyError ?? `Could not read history for ${regMethod}.`} The registration quote was not loaded. A failed history read is not an empty index.`;
+  } else if (bundle.registrationArgsUnreadable) {
+    text = "The registration transaction was found, but its arguments could not be read, so the TDX quote was not verified.";
+  } else if (bundle.registration) {
+    text = "A registration record was found, but it did not include a TDX quote.";
+  } else {
+    text = "No successful register_agent or register_worker arguments were loaded, so the TDX quote was not verified.";
+  }
+  return withRegistrationCache(bundle, text);
+}
+
+function withRegistrationCache(bundle: EvidenceBundle, text: string): string {
+  if (bundle.registrationHistoryCacheAgeMs === undefined) return text;
+  return `${text} The registration transaction was chosen from a local history cache (${formatHistoryCacheAge(bundle.registrationHistoryCacheAgeMs)} old).`;
+}
+
+function noteRegistrationCache(bundle: EvidenceBundle, finding: Finding): Finding {
+  if (bundle.registrationHistoryCacheAgeMs === undefined) return finding;
+  return { ...finding, plainEnglish: withRegistrationCache(bundle, finding.plainEnglish) };
+}
+
+function withCodehashCache(bundle: EvidenceBundle, text: string): string {
+  if (fromFile(bundle) || bundle.codehashHistoryCacheAgeMs === undefined) return text;
+  return `${text} The approve_codehash history was served from a local cache (${formatHistoryCacheAge(bundle.codehashHistoryCacheAgeMs)} old), not a new read.`;
+}
+
 function clip(value: string): string {
   const cleaned = value.replace(/[\u0000-\u001f\u007f]/g, " ").trim();
   return cleaned.length > 300 ? `${cleaned.slice(0, 300)}…` : cleaned;
@@ -1493,9 +1557,14 @@ function provenanceFinding(bundle: EvidenceBundle): Finding {
     osImageHashConflict: selected.conflict,
     ...measurements,
   });
+  const regMethod = bundle.shade === "shade-v1-worker" ? "register_worker" : "register_agent";
+  const unread =
+    !fromFile(bundle) && !tcb && bundle.historyFailedMethods?.includes(regMethod)
+      ? `${bundle.historyError ?? `Could not read history for ${regMethod}.`} The registered measurements were not loaded. This is not an empty measurement. `
+      : "";
   const detail = fromFile(bundle)
     ? `${assessment.detail} The file supplied these measurement fields. This run did not read them from chain.`
-    : assessment.detail;
+    : `${unread}${assessment.detail}`;
   return make(
     "measurements.provenance",
     assessment.ladder,
@@ -1543,12 +1612,14 @@ function contractFindings(bundle: EvidenceBundle): Finding[] {
     accessKeyError: bundle.accessKeyError,
     approvalHistory: bundle.approvalHistory,
     historyLoaded,
+    historyFailedMethods: bundle.historyFailedMethods,
   });
   const removed = assessRemove({
     shade: bundle.shade,
     changeMethods: bundle.changeMethods,
     approvalHistory: bundle.approvalHistory,
     historyLoaded,
+    historyFailedMethods: bundle.historyFailedMethods,
   });
   const code = assessContractCode({
     codeHash: bundle.codeHash,
@@ -1570,9 +1641,13 @@ function contractFindings(bundle: EvidenceBundle): Finding[] {
 
 function freshnessFinding(bundle: EvidenceBundle, now: Date): Finding {
   const freshness = reportFreshness(bundle, now);
+  const regMethod = bundle.shade === "shade-v1-worker" ? "register_worker" : "register_agent";
+  const registrationUnread = !fromFile(bundle) && bundle.historyFailedMethods?.includes(regMethod) && !freshness.registrationTime;
   const when = freshness.registrationTime
     ? `The registration time is ${freshness.registrationTime}. The attestation age at ${now.toISOString()} is ${freshness.attestationAge ?? "unreadable"}.`
-    : "Registration time was not loaded, so attestation age was not computed.";
+    : registrationUnread
+      ? `${bundle.historyError ?? `Could not read history for ${regMethod}.`} Registration time was not loaded, so attestation age was not computed.`
+      : "Registration time was not loaded, so attestation age was not computed.";
   const until =
     freshness.validUntil.length > 0
       ? ` The contract view names valid_until_ms for ${freshness.validUntil.map((item) => `${item.accountId} (${item.validUntil})`).join(", ")}.`

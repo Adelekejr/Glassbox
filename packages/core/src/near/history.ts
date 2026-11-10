@@ -1,4 +1,5 @@
 import type { Network } from "../types.js";
+import { NearClient } from "./rpc.js";
 
 export interface HistoryCall {
   hash: string;
@@ -7,6 +8,8 @@ export interface HistoryCall {
   success: boolean;
   method?: string;
   args?: unknown;
+  /** True when the index row had no arguments and the archival transaction read failed. */
+  argsUnreadable?: boolean;
 }
 
 export interface HistoryPage {
@@ -16,13 +19,24 @@ export interface HistoryPage {
   usedNearblocks: boolean;
   /** True when this page was served from the in-process cache. */
   fromCache?: boolean;
+  /** Age of the cached page, in milliseconds. Set only when fromCache is true. */
+  cacheAgeMs?: number;
 }
 
 export interface HistoryOptions {
   fetch?: typeof fetch;
   /** Minimum gap between NearBlocks calls. Default respects the free 6/minute cap. */
   nearblocksIntervalMs?: number;
+  /** Gap between archival RPC reads used to recover call arguments. */
+  rpcIntervalMs?: number;
   sleep?: (ms: number) => Promise<void>;
+}
+
+/** Human age for a cached history page. Sub-minute ages stay "under a minute". */
+export function formatHistoryCacheAge(ageMs: number): string {
+  if (!Number.isFinite(ageMs) || ageMs < 60_000) return "under a minute";
+  const minutes = Math.round(ageMs / 60_000);
+  return minutes === 1 ? "1 minute" : `${minutes} minutes`;
 }
 
 const NEARBLOCKS: Record<Network, string> = {
@@ -80,8 +94,13 @@ export function resetNearblocksLimiter(): void {
 
 /**
  * On-demand history for one account and one method.
- * FastNEAR's tx index (tx.test/main.fastnear.com/v0/account) returned HTTP 404
- * on 2026-11-04, so a miss falls through to NearBlocks.
+ * FastNEAR's tx index is tried first. An empty list, or a list with no row for
+ * this method, falls through. NearBlocks v3 no longer serves `/v1/account/…/txns`
+ * on testnet (HTTP 410). The method-filtered list is
+ * `/v3/accounts/…/receipts?method=`, because `/v3/accounts/…/txns` does not
+ * filter by method and its rows omit call arguments. The parser also accepts
+ * the v3 transaction-list shape (`data`, `signer_account_id`). Arguments are
+ * read from the archival `tx` RPC once the hash and signer are kept.
  */
 export async function listMethodCalls(
   network: Network,
@@ -93,7 +112,7 @@ export async function listMethodCalls(
   const ttl = cacheTtlMs();
   const hit = historyCache.get(key);
   if (hit && ttl > 0 && Date.now() - hit.at < ttl) {
-    return { ...hit.page, fromCache: true };
+    return { ...hit.page, fromCache: true, cacheAgeMs: Date.now() - hit.at };
   }
   const fetchImpl = options.fetch ?? fetch;
   const fast = await tryFastnear(fetchImpl, network, accountId, method);
@@ -102,6 +121,7 @@ export async function listMethodCalls(
     source: "nearblocks" as const,
     usedNearblocks: true,
   };
+  await fillMissingArgs(network, page.calls, fetchImpl, options);
   rememberHistory(key, page);
   return page;
 }
@@ -122,7 +142,8 @@ async function tryFastnear(
     if (!response.ok) return null;
     const body = (await response.json()) as unknown;
     const calls = parseFastnear(body, method);
-    if (!calls) return null;
+    // An empty list, or rows for other methods, is not an answer for this method.
+    if (!calls || calls.length === 0) return null;
     return { calls, source: "fastnear", usedNearblocks: false };
   } catch {
     return null;
@@ -136,20 +157,29 @@ function parseFastnear(body: unknown, method: string): HistoryCall[] | null {
   for (const row of rows) {
     if (!row || typeof row !== "object") continue;
     const record = row as Record<string, unknown>;
-    const rowMethod = stringField(record, ["method", "method_name"]);
-    if (rowMethod && rowMethod !== method) continue;
+    const rowMethod = stringField(record, ["method", "method_name"]) ?? methodOnActions(record, method);
+    if (rowMethod !== method) continue;
     const hash = stringField(record, ["transaction_hash", "hash", "tx_hash", "id"]);
-    const signer = stringField(record, ["signer_id", "predecessor_account_id", "signer", "predecessor"]);
+    const signer = stringField(record, ["signer_account_id", "signer_id", "predecessor_account_id", "signer", "predecessor"]);
     if (!hash || !signer) continue;
     calls.push({
       hash,
       signer,
       timestampNs: stringField(record, ["block_timestamp", "timestamp"]),
       success: record.status !== false && record.success !== false,
-      method: rowMethod ?? method,
+      method,
     });
   }
-  return calls;
+  return calls.length > 0 ? calls : null;
+}
+
+function methodOnActions(record: Record<string, unknown>, method: string): string | undefined {
+  if (!Array.isArray(record.actions)) return undefined;
+  for (const action of record.actions) {
+    if (!action || typeof action !== "object") continue;
+    if ((action as { method?: unknown }).method === method) return method;
+  }
+  return undefined;
 }
 
 function findTxArrays(body: unknown): unknown[] | null {
@@ -172,16 +202,15 @@ async function fetchNearblocks(
   const interval = options.nearblocksIntervalMs ?? 10_500;
   const sleep = options.sleep ?? defaultSleep;
   const calls: HistoryCall[] = [];
-  let cursor: string | undefined;
+  let next: string | undefined;
   for (let page = 0; page < 2; page += 1) {
     await takeNearblocksSlot(interval, sleep);
     const params = new URLSearchParams({
       method,
-      per_page: "25",
-      order: "desc",
+      limit: "25",
     });
-    if (cursor) params.set("cursor", cursor);
-    const url = `${NEARBLOCKS[network]}/v1/account/${encodeURIComponent(accountId)}/txns?${params}`;
+    if (next) params.set("next", next);
+    const url = `${NEARBLOCKS[network]}/v3/accounts/${encodeURIComponent(accountId)}/receipts?${params}`;
     const response = await fetchImpl(url, {
       headers: {
         accept: "application/json",
@@ -193,41 +222,103 @@ async function fetchNearblocks(
       throw new Error("NearBlocks rate limit (HTTP 429). Glassbox spaces calls; retry this account later.");
     }
     if (!response.ok) {
-      throw new Error(`NearBlocks HTTP ${response.status} for ${accountId} ${method}.`);
+      throw new Error(`NearBlocks HTTP ${response.status}`);
     }
-    const body = (await response.json()) as { cursor?: string; txns?: unknown[] };
-    for (const row of body.txns ?? []) {
-      const call = parseNearblocksRow(row, method);
-      if (call) calls.push(call);
-    }
-    if (!body.cursor || (body.txns ?? []).length === 0) break;
-    cursor = body.cursor;
+    const body = (await response.json()) as unknown;
+    const parsed = parseNearblocksPage(body, method);
+    calls.push(...parsed.calls);
+    if (!parsed.next || parsed.rowCount === 0) break;
+    next = parsed.next;
   }
   return calls;
+}
+
+/**
+ * v3 lists put rows under `data` (v1 used `txns`). A transaction-list row signs
+ * with `signer_account_id`. A receipt row signs with `predecessor_account_id`.
+ * List items name the method and do not include call arguments.
+ */
+export function parseNearblocksPage(
+  body: unknown,
+  method: string,
+): { calls: HistoryCall[]; next?: string; rowCount: number } {
+  if (!body || typeof body !== "object") return { calls: [], rowCount: 0 };
+  const record = body as Record<string, unknown>;
+  const rows = arrayField(record, ["data", "txns"]);
+  const meta = record.meta && typeof record.meta === "object" ? (record.meta as Record<string, unknown>) : undefined;
+  const next = (meta ? stringField(meta, ["next_page"]) : undefined) ?? stringField(record, ["cursor"]);
+  const calls: HistoryCall[] = [];
+  for (const row of rows) {
+    const call = parseNearblocksRow(row, method);
+    if (call) calls.push(call);
+  }
+  return { calls, next, rowCount: rows.length };
 }
 
 function parseNearblocksRow(row: unknown, method: string): HistoryCall | null {
   if (!row || typeof row !== "object") return null;
   const record = row as Record<string, unknown>;
-  const hash = stringField(record, ["transaction_hash"]);
-  const signer = stringField(record, ["predecessor_account_id"]);
+  const hash = stringField(record, ["transaction_hash", "hash"]);
+  const signer = stringField(record, ["signer_account_id", "predecessor_account_id"]);
   if (!hash || !signer) return null;
   const actions = Array.isArray(record.actions) ? record.actions : [];
   const action = actions.find((item) => {
     if (!item || typeof item !== "object") return false;
     return (item as { method?: string }).method === method;
   }) as { method?: string; args?: unknown } | undefined;
-  const outcomes = record.outcomes as { status?: boolean } | undefined;
-  const receipt = record.receipt_outcome as { status?: boolean } | undefined;
-  const success = outcomes?.status !== false && receipt?.status !== false;
+  if (actions.length > 0 && !action) return null;
+  const outcome = statusOf(record.outcomes) ?? statusOf(record.outcome) ?? statusOf(record.receipt_outcome);
+  const success = outcome !== false;
+  const block = record.block && typeof record.block === "object" ? (record.block as Record<string, unknown>) : undefined;
   return {
     hash,
     signer,
-    timestampNs: stringField(record, ["block_timestamp"]),
+    timestampNs:
+      stringField(record, ["block_timestamp", "included_in_block_timestamp"]) ??
+      (block ? stringField(block, ["block_timestamp"]) : undefined),
     success,
     method,
-    args: decodeArgs(action?.args),
+    args: action ? decodeArgs(action.args) : undefined,
   };
+}
+
+async function fillMissingArgs(
+  network: Network,
+  calls: HistoryCall[],
+  fetchImpl: typeof fetch,
+  options: HistoryOptions,
+): Promise<void> {
+  const missing = calls.filter((call) => call.success && call.args === undefined);
+  if (missing.length === 0) return;
+  const archival = new NearClient({
+    network,
+    archival: true,
+    fetch: fetchImpl,
+    minIntervalMs: options.rpcIntervalMs ?? 1000,
+    sleep: options.sleep,
+  });
+  for (const call of missing) {
+    try {
+      const tx = await archival.transaction(call.hash, call.signer);
+      const extracted = extractFunctionCallArgs(tx);
+      if (extracted !== null && extracted !== undefined) call.args = extracted;
+    } catch {
+      call.argsUnreadable = true;
+    }
+  }
+}
+
+function arrayField(record: Record<string, unknown>, keys: string[]): unknown[] {
+  for (const key of keys) {
+    if (Array.isArray(record[key])) return record[key] as unknown[];
+  }
+  return [];
+}
+
+function statusOf(value: unknown): boolean | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const status = (value as { status?: unknown }).status;
+  return typeof status === "boolean" ? status : undefined;
 }
 
 function decodeArgs(args: unknown): unknown {

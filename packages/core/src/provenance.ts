@@ -1,3 +1,4 @@
+import { formatHistoryCacheAge } from "./near/history.js";
 import type { EvidenceBundle, Finding, FindingProvenance, ObservationKind } from "./types.js";
 
 const QUOTE_VERIFICATION = new Set([
@@ -60,7 +61,18 @@ export function attachProvenance(finding: Finding, bundle: EvidenceBundle): Find
 }
 
 function provenanceFor(finding: Finding, bundle: EvidenceBundle): FindingProvenance {
-  if (finding.id === "runtime.observed" || finding.id === "freshness.registration") {
+  if (finding.id === "runtime.observed") {
+    return row("unavailable", "unavailable", "Not a live chain observation.");
+  }
+  if (finding.id === "freshness.registration") {
+    const regMethod = bundle.shade === "shade-v1-worker" ? "register_worker" : "register_agent";
+    if (bundle.historyFailedMethods?.includes(regMethod) && !bundle.registration?.timestampSec) {
+      return row(
+        "unavailable",
+        "unavailable",
+        "Could not read history, so registration time was not loaded. Not a live chain observation.",
+      );
+    }
     return row("unavailable", "unavailable", "Not a live chain observation.");
   }
   if (blockedByTransport(finding.id, bundle)) {
@@ -74,9 +86,24 @@ function provenanceFor(finding: Finding, bundle: EvidenceBundle): FindingProvena
   const supplied = isSupplied(bundle);
   const origin = suppliedKind(bundle);
 
+  if (historyUnread(finding, bundle)) {
+    return row(
+      "unavailable",
+      "unavailable",
+      "Could not read history, so this check did not complete. A failed history read is not an empty index and is not a live chain observation.",
+    );
+  }
+
   if (QUOTE_VERIFICATION.has(finding.id)) {
     if (supplied) {
       return row(origin, "computed", "Verification of supplied quote bytes. Not a live chain observation.");
+    }
+    if (bundle.registrationHistoryCacheAgeMs !== undefined) {
+      return row(
+        "chain",
+        "computed",
+        `Registration history was served from a local cache (${formatHistoryCacheAge(bundle.registrationHistoryCacheAgeMs)} old). Not a fresh chain observation.`,
+      );
     }
     return row(
       "chain",
@@ -87,6 +114,13 @@ function provenanceFor(finding: Finding, bundle: EvidenceBundle): FindingProvena
   if (SUPPLIED_REGISTRATION_CHECK.has(finding.id)) {
     if (supplied) {
       return row(origin, "computed", "Verification of supplied registration bytes. Not a live chain observation.");
+    }
+    if (bundle.registrationHistoryCacheAgeMs !== undefined) {
+      return row(
+        "chain",
+        "computed",
+        `Registration history was served from a local cache (${formatHistoryCacheAge(bundle.registrationHistoryCacheAgeMs)} old). Not a fresh chain observation.`,
+      );
     }
     return row("chain", "computed", "Local check of registration bytes loaded in this run. Not a live guest observation.");
   }
@@ -123,6 +157,13 @@ function provenanceFor(finding: Finding, bundle: EvidenceBundle): FindingProvena
         : "Equality of values in the supplied file. Not a live chain observation.";
     return row(source, source, label);
   }
+  if (finding.id === "codehash.approved" && bundle.codehashHistoryCacheAgeMs !== undefined) {
+    return row(
+      "chain",
+      "computed",
+      `approve_codehash history was served from a local cache (${formatHistoryCacheAge(bundle.codehashHistoryCacheAgeMs)} old). Not a fresh chain observation.`,
+    );
+  }
   if (ACCOUNT_STATE.has(finding.id)) {
     return row("chain", "chain", "Fresh chain observation from this run.");
   }
@@ -150,6 +191,25 @@ function suppliedKind(bundle: EvidenceBundle): "file" | "paste" {
 
 function hasUnavailableProbe(bundle: EvidenceBundle): boolean {
   return bundle.methodProbes?.some((probe) => probe.outcome === "unavailable") ?? false;
+}
+
+function historyUnread(finding: Finding, bundle: EvidenceBundle): boolean {
+  if (finding.ladder !== "NOT_PROVEN") return false;
+  const failed = bundle.historyFailedMethods ?? [];
+  if (failed.length === 0) return false;
+  const regMethod = bundle.shade === "shade-v1-worker" ? "register_worker" : "register_agent";
+  const registrationFailed = failed.includes(regMethod) && !bundle.registration?.quoteHex;
+  if (
+    registrationFailed &&
+    (QUOTE_VERIFICATION.has(finding.id) ||
+      finding.id === "dstack.range" ||
+      finding.id === "dstack.upgrade" ||
+      finding.id === "measurements.provenance")
+  ) {
+    return true;
+  }
+  if (finding.id === "codehash.approved" && (failed.includes(regMethod) || failed.includes("approve_codehash"))) return true;
+  return false;
 }
 
 function blockedByTransport(id: string, bundle: EvidenceBundle): boolean {
